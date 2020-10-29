@@ -2,10 +2,10 @@
 
 [System]
 
-stationID: IL0003
-latitude: 30.59750 ; WGS84 +N  (degrees )
-longitude: 34.76222 ; WGS84 +E (degrees)
-elevation: 882.9 ; mean sea level EGM96 geoidal datum, not WGS84 ellipsoidal (meters)
+stationID: IL0003 ; IMN
+latitude: 30.59750 ; WGS84 +N  (degrees ) ; IMN
+longitude: 34.76222 ; WGS84 +E (degrees) ; IMN
+elevation: 882.9 ; mean sea level EGM96 geoidal datum, not WGS84 ellipsoidal (meters) ; IMN
 cams_code: 0 ; Should be set only if full CAMS compatibility is desired
 
 
@@ -36,7 +36,10 @@ reboot_lock_file: .reboot_lock
 
 [Capture]
 
-;device: rtspsrc location=rtsp://192.168.42.10:554/user=admin&password=&channel=1&stream=0.sdp ! rtpjitterbuffer ! rtph264depay ! queue ! h264parse ! omxh264dec ! queue ! videoconvert ! appsink sync=1 ; device id
+; IMN - RPi3
+; device: rtspsrc location=rtsp://192.168.42.10:554/user=admin&password=&channel=1&stream=0.sdp ! rtpjitterbuffer ! rtph264depay ! queue ! h264parse ! omxh264dec ! queue ! videoconvert ! appsink sync=1 ; device id
+
+; IMN - RPi4
 device: rtspsrc protocols=tcp tcp-timeout=2000000 retry=2 do-retransmission=false is-live=true location="rtsp://192.168.42.10:554/user=admin&password=&channel=1&stream=0.sdp" latency=1000 ! rtpjitterbuffer ! rtph264depay ! h264parse ! v4l2h264dec ! appsink max-buffers=8 drop=true sync=1
 width: 1280
 height: 720
