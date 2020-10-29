@@ -1,0 +1,27 @@
+
+1. Change hostname
+	- edit /etc/hostname
+	- use the name of the station
+	- reboot
+
+2. Change password for user `pi'.  It is used by the VNC server.
+	- sudo passwd pi
+	- use the station name
+
+3. On RPi 4, change device: line in ~/source/RMS/.config as per ~/Desktop/READ-RPi4_note.txt
+
+4. Change smbpasswd for user pi
+	- sudo smbpasswd pi
+	- use the station name
+
+5. Set station coordinates in the .config file:
+	- use google maps or GPS data, including elevation
+
+6. Set up IMN transfer
+	- mkdir ~/source/RMS/IMN
+	- Copy IMN.sh and IMN.py from halifax:Documents/Work/IMN to ~/source/RMS/IMN
+	- Change the external_script_path line in .config to:
+
+		external_script_path: /home/pi/source/RMS/IMN/IMN.py
+
+7. Reboot
