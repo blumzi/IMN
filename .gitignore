@@ -1,0 +1,92 @@
+# Sublime files
+*.sublime-project
+*.sublime-workspace
+
+# Recorded BIN/FITS files
+FF*.bin
+FR*.bin
+FS*.bin
+FF*.fits
+FR*.fits
+FS*.fits
+
+# Platepar
+platepar*.cal
+
+# Flat
+flat.*
+
+# Eclipse
+.project
+.pydevproject
+.settings/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*,cover
+
+# Translations
+*.mo
+*.pot
+
+# Log files
+*.log*
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+*.npz
+
+# Cython compiled files
+*.pyxbldc
+
+#VS Code files
+.vscode
+
+#Jetbrains code files
+.idea
+
+camerasettings/*.json
