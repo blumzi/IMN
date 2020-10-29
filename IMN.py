@@ -36,4 +36,4 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 		captured_night_dir, archived_night_dir, config.latitude, config.longitude, config.elevation, \
 		config.width, config.height, remaining_seconds))
         
-	os.system("/bin/rm -f " + lock_file
+	os.system("/bin/rm -f " + lock_file)
