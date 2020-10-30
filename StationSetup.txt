@@ -1,6 +1,7 @@
 
 1. Change hostname
 	- edit /etc/hostname
+    - edit /etc/hosts, add station name to 127.0.0.1
 	- use the name of the station
 	- reboot
 
