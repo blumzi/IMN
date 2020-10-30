@@ -21,4 +21,6 @@ if [ -s "${radiants_text_file}" ]; then
     echo "Uploading ${radiants_text_file} to ${ftp_location} ..."
     curl --silent --user "${ftp_credentials}" --upload-file ${radiants_text_file} ${ftp_location}/${radiants_text_file} --ftp-create-dirs
     logger -t IMN "Uploaded ${radiants_text_file} to ${ftp_location}/${radiants_text_file}"
+else
+    logger -t IMN "No radiants file in ${captured_dir}"
 fi
