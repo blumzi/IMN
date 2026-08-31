@@ -1,0 +1,7 @@
+# Extra Python dependencies for the bolide-video YouTube publishing feature.
+# Install into the RMS venv on the station:
+#     source ~/vRMS/bin/activate
+#     pip install -r requirements-bolides.txt
+google-api-python-client
+google-auth
+google-auth-oauthlib

@@ -2,9 +2,14 @@
 
 import os
 import getpass
+import logging
 import datetime
 import subprocess
 from RMS.CaptureDuration import captureDuration
+
+import bolides
+
+log = logging.getLogger("IMN")
 
 # Get the current user
 user = getpass.getuser()
@@ -39,6 +44,14 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 		"{:.6f}".format(config.latitude), "{:.6f}".format(config.longitude), \
 		"{:.1f}".format(config.elevation), "{:d}".format(config.width), \
 		"{:d}".format(config.height), "{:d}".format(remaining_seconds)])
+
+	# Select and publish the night's best bolides. Guarded so that any failure
+	# (bad data, network, missing YouTube credentials) cannot break the RMS
+	# nightly flow or leave the reboot lock stuck below.
+	try:
+		bolides.publish_bolides(archived_night_dir, config)
+	except Exception as e:
+		log.error("bolide publishing failed: %r", e)
 
 	if os.path.exists(lock_file):
 		os.remove(lock_file)

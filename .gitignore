@@ -92,3 +92,8 @@ target/
 .idea
 
 camerasettings/*.json
+
+# Bolide/YouTube credentials must never be committed (real files live in
+# ~/.config/IMN; these guard against an accidental copy into the repo).
+youtube.json
+client_secret.json
