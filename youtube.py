@@ -147,11 +147,11 @@ def authorize():
         raise SystemExit("Place your OAuth client secret at {}".format(_CLIENT_SECRET_PATH))
 
     flow = InstalledAppFlow.from_client_secrets_file(_CLIENT_SECRET_PATH, SCOPES)
-    try:
-        creds = flow.run_local_server(port=0)
-    except Exception:
-        # Headless fallback (no local browser/redirect available).
-        creds = flow.run_console()
+    # There is no headless fallback: Google blocked the out-of-band
+    # (copy-the-code) flow in 2022 and google-auth-oauthlib dropped
+    # run_console() in 1.0.0. Run this where a browser is available and copy
+    # the resulting youtube.json to the station.
+    creds = flow.run_local_server(port=0)
 
     existing = _load_config() or {}
     existing.update({
