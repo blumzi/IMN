@@ -97,3 +97,6 @@ camerasettings/*.json
 # ~/.config/IMN; these guard against an accidental copy into the repo).
 youtube.json
 client_secret.json
+
+# Local test virtualenv
+.venv/
