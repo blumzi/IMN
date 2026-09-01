@@ -10,9 +10,9 @@
 
     Selection (per station, no cross-station calibration):
       - keep meteors whose peak *apparent* magnitude <= mag_threshold (-1)
-      - rank by saturated-frame fraction (primary), angular trail length (tie)
-      - if no meteor in the night carries saturation data, fall back to
-        ranking by peak brightness alone
+      - rank by saturated-frame fraction, then peak brightness, then angular
+        trail length -- so a night whose saturation column is absent or all
+        zero (the usual case) ranks by brightness on its own
       - take the best N (default 3)
 
     Video is produced by RMS Utils.FRbinViewer (mp4, headless -x), then handed
@@ -114,27 +114,26 @@ def select_bolides(archived_dir, mag_threshold=DEFAULT_MAG_THRESHOLD, n=DEFAULT_
     meteors = readFTPdetectinfo(os.path.dirname(ftp_path), os.path.basename(ftp_path))
 
     candidates = []
-    night_has_sat = False
     for meteor in meteors:
         peak_mag, sat_fraction, has_sat, trail_deg = _metrics(meteor)
 
         if peak_mag is None or peak_mag > mag_threshold:
             continue
 
-        night_has_sat = night_has_sat or has_sat
         candidates.append(Bolide(meteor[0], peak_mag, sat_fraction, has_sat, trail_deg))
 
-    if night_has_sat:
-        # Primary: saturated-frame fraction (desc). Tiebreak: trail length (desc).
-        candidates.sort(key=lambda c: (c.sat_fraction or 0.0, c.trail_deg), reverse=True)
-    else:
-        # Fallback for the whole night: brightest first, longer trail as tiebreak.
-        candidates.sort(key=lambda c: (c.peak_mag, -c.trail_deg))
+    # Saturation leads where it discriminates, brightness always breaks the tie,
+    # trail length last. A night whose saturation column is absent *or* all-zero
+    # (common: nothing saturates unless it is genuinely bright) therefore ranks
+    # by brightness on its own, rather than degenerating to trail length.
+    candidates.sort(key=lambda c: (c.sat_fraction or 0.0, -c.peak_mag, c.trail_deg),
+                    reverse=True)
 
     selected = candidates[:n]
+    night_has_sat = any(c.sat_fraction for c in candidates)
     log.info("selected %d/%d bolides (mag<=%.1f, %s ranking) from %s",
              len(selected), len(candidates), mag_threshold,
-             "saturation" if night_has_sat else "brightness-fallback", archived_dir)
+             "saturation" if night_has_sat else "brightness", archived_dir)
     return selected
 
 
