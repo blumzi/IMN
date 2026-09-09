@@ -3,5 +3,10 @@
 #     source ~/vRMS/bin/activate
 #     pip install -r requirements-bolides.txt
 google-api-python-client
-google-auth
 google-auth-oauthlib
+
+# Stations run pip 20 with the legacy resolver, which does not backtrack: left
+# to itself it installs the newest google-auth and merely warns that
+# google-auth-oauthlib excludes it. Carrying that library's own constraint here
+# gets a compatible pair, since a specifier given directly IS honoured.
+google-auth!=2.43.0,!=2.44.0,!=2.45.0,<3.0.0,>=2.15.0

@@ -17,6 +17,9 @@
 #                                  repoint the station's external_script_path
 #     imn --pull  [station ...]    git pull the station's IMN checkout
 #
+# --clone and --pull install requirements-bolides.txt into the station's ~/vRMS
+# when it is not already importable.
+#
 # --clone and --pull also push the station's share of ~/.config/IMN, so a
 # station ends up with the credentials the nightly job needs. Only youtube.json
 # is sent. NOT client_secret.json, which is only needed where 'youtube.py
@@ -46,6 +49,10 @@ readonly PARENT_DIR='${HOME}/source'
 readonly CHECKOUT_DIR="${PARENT_DIR}/IMN"
 readonly RMS_CONFIG="${PARENT_DIR}/RMS/.config"
 
+# The venv RMS itself runs in, and so the one rmsExternal imports from.
+readonly VENV='${HOME}/vRMS'
+readonly REQUIREMENTS="${CHECKOUT_DIR}/requirements-bolides.txt"
+
 readonly SSH_OPTS=(
     -o StrictHostKeyChecking=accept-new
     -o UserKnownHostsFile="${HOME}/.ssh/known_hosts"
@@ -63,6 +70,29 @@ usage() {
 die() {
     echo "${PROGNAME}: $*" >&2
     exit 2
+}
+
+
+# Install the bolide feature's Python dependencies into the station's RMS venv,
+# skipping the work when they import cleanly -- pip over the network is slow on
+# a Pi and this runs on every clone and pull.
+#
+# Emitted into the mode scripts below via command substitution, whose output is
+# inserted literally, so the \$ escapes here survive to the station.
+install_deps_snippet() {
+    cat <<EOF
+if [ ! -x ${VENV}/bin/python ]; then
+    echo "no venv at ${VENV} -- bolide dependencies not installed" >&2
+elif [ ! -f ${REQUIREMENTS} ]; then
+    echo "no ${REQUIREMENTS} -- bolide dependencies not installed" >&2
+elif ${VENV}/bin/python -c 'import googleapiclient, google.oauth2, google_auth_oauthlib' 2>/dev/null; then
+    echo "bolide dependencies already installed"
+else
+    echo "installing bolide dependencies ..."
+    ${VENV}/bin/pip install --quiet -r ${REQUIREMENTS}
+    echo "installed"
+fi
+EOF
 }
 
 
@@ -91,6 +121,8 @@ if [ -d ${CHECKOUT_DIR}/.git ]; then
 else
     git clone ${REPO_URL} ${CHECKOUT_DIR}
 fi
+
+$(install_deps_snippet)
 
 config=${RMS_CONFIG}
 target=${CHECKOUT_DIR}/IMN.py
@@ -125,6 +157,8 @@ if [ ! -d ${CHECKOUT_DIR}/.git ]; then
 fi
 cd ${CHECKOUT_DIR}
 git pull --ff-only
+
+$(install_deps_snippet)
 EOF
         ;;
     esac
