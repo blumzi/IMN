@@ -73,6 +73,16 @@ die() {
 }
 
 
+# The stations table with comments and blank lines taken out, so the reader
+# below only ever sees real rows. In order: drop a CR from a file saved with
+# Windows line endings (it would otherwise ride along in the last field and
+# every ssh would get a bad username), cut from any # to end of line, drop the
+# whitespace that leaves behind, then drop lines that are now empty.
+strip_comments() {
+    sed -e 's/\r$//' -e 's/#.*//' -e 's/[[:space:]]*$//' -e '/^[[:space:]]*$/d' "$1"
+}
+
+
 # Install the bolide feature's Python dependencies into the station's RMS venv,
 # skipping the work when they import cleanly -- pip over the network is slow on
 # a Pi and this runs on every clone and pull.
@@ -252,9 +262,7 @@ main() {
     local ip station user
     while IFS=$'\t' read -r -u 3 ip station user _; do
 
-        # Skip blank lines, comments and anything short of the three fields.
-        [ -n "${ip}" ] && [ "${ip:0:1}" != '#' ] || continue
-        [ -n "${station}" ] && [ -n "${user}" ] || {
+        [ -n "${ip}" ] && [ -n "${station}" ] && [ -n "${user}" ] || {
             echo "${PROGNAME}: ignoring malformed line: ${ip}" >&2
             continue
         }
@@ -274,7 +282,7 @@ main() {
         }
         echo
 
-    done 3< "${STATIONS_FILE}"
+    done 3< <(strip_comments "${STATIONS_FILE}")
 
     if (( ! visited )); then
         die "no stations matched"
