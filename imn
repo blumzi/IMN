@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+
+# imn -- run one operation on every IMN station over ssh.
+#
+# Stations are read from ~/.config/IMN/stations (override with $IMN_STATIONS):
+# a TAB separated table of
+#
+#     <ip>	<station>	<user>
+#
+# Blank lines and lines starting with # are ignored. The station's ssh password
+# is its station name, i.e. the second field. That file therefore holds
+# credentials -- keep it out of the repo and chmod 600.
+#
+# Usage:
+#     imn --test  [station ...]    pwd + ls on each station, to check reachability
+#     imn --clone [station ...]    git clone the IMN repo alongside RMS, and
+#                                  repoint the station's external_script_path
+#     imn --pull  [station ...]    git pull the station's IMN checkout
+#
+# --clone and --pull also push the station's share of ~/.config/IMN, so a
+# station ends up with the credentials the nightly job needs. Only youtube.json
+# is sent. NOT client_secret.json, which is only needed where 'youtube.py
+# authorize' is run, and emphatically NOT the stations file, which holds every
+# station's password -- copying that to a station would hand one station the
+# credentials of the whole fleet.
+#
+# With no station arguments every station in the file is visited. Otherwise only
+# the ones whose station name or ip matches an argument. Stations are visited in
+# file order and one failure does not stop the rest; the exit status is the
+# number of stations that failed.
+
+set -uo pipefail
+
+readonly PROGNAME=${0##*/}
+readonly CONFIG_DIR=${HOME}/.config/IMN
+readonly STATIONS_FILE=${IMN_STATIONS:-${CONFIG_DIR}/stations}
+readonly REPO_URL=https://github.com/blumzi/IMN.git
+
+# The only files a station needs from ~/.config/IMN. Deliberately a whitelist:
+# that directory also holds client_secret.json and the stations file, neither of
+# which has any business on a station.
+readonly CONFIG_FILES=(youtube.json)
+
+# Where IMN lives on a station: a sibling of RMS, both under ~/source.
+readonly PARENT_DIR='${HOME}/source'
+readonly CHECKOUT_DIR="${PARENT_DIR}/IMN"
+readonly RMS_CONFIG="${PARENT_DIR}/RMS/.config"
+
+readonly SSH_OPTS=(
+    -o StrictHostKeyChecking=accept-new
+    -o UserKnownHostsFile="${HOME}/.ssh/known_hosts"
+    -o ConnectTimeout=5
+    -o LogLevel=ERROR
+)
+
+
+usage() {
+    sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//'
+    exit "${1:-2}"
+}
+
+
+die() {
+    echo "${PROGNAME}: $*" >&2
+    exit 2
+}
+
+
+# The remote command for each mode. Quoted with single quotes so ${HOME} is
+# expanded on the station, not here.
+remote_command() {
+    case $1 in
+    test)
+        echo 'echo "host: $(hostname)"; pwd; ls'
+        ;;
+    clone)
+        # Idempotent: a station that already has a checkout, or whose config
+        # already points at it, is left alone rather than failing, so --clone
+        # can be re-run over the whole fleet.
+        #
+        # RMS calls IMN through external_script_path in the station's .config,
+        # and on the older stations that still points into ~/source/RMS/IMN.
+        # Repoint it at the new sibling checkout, or the clone changes nothing
+        # about what actually runs at the end of a night.
+        cat <<EOF
+set -e
+
+mkdir -p ${PARENT_DIR}
+if [ -d ${CHECKOUT_DIR}/.git ]; then
+    echo "already cloned at ${CHECKOUT_DIR}"
+else
+    git clone ${REPO_URL} ${CHECKOUT_DIR}
+fi
+
+config=${RMS_CONFIG}
+target=${CHECKOUT_DIR}/IMN.py
+
+if [ ! -f "\$config" ]; then
+    echo "no RMS config at \$config -- external_script_path not touched" >&2
+    exit 1
+fi
+
+current=\$(sed -n 's/^external_script_path:[[:space:]]*//p' "\$config" | head -1)
+
+if [ -z "\$current" ]; then
+    echo "no external_script_path in \$config -- not touched" >&2
+    exit 1
+elif [ "\$current" = "\$target" ]; then
+    echo "external_script_path already \$target"
+else
+    # -n keeps the first backup taken, so re-running never overwrites the
+    # station's original config with an already-modified one.
+    cp -n "\$config" "\$config.imn-backup"
+    sed -i "s|^external_script_path:.*|external_script_path: \$target|" "\$config"
+    echo "external_script_path: \$current -> \$target"
+fi
+EOF
+        ;;
+    pull)
+        cat <<EOF
+set -e
+if [ ! -d ${CHECKOUT_DIR}/.git ]; then
+    echo "no checkout at ${CHECKOUT_DIR} -- run '${PROGNAME} --clone' first" >&2
+    exit 1
+fi
+cd ${CHECKOUT_DIR}
+git pull --ff-only
+EOF
+        ;;
+    esac
+}
+
+
+# Run one command on a station. The password goes through the environment, never
+# argv, so it does not show up in ps output on this machine.
+run_remote() {
+    local ip=$1 station=$2 user=$3 command=$4
+
+    SSHPASS="${station}" sshpass -e ssh "${SSH_OPTS[@]}" "${user}@${ip}" "${command}"
+}
+
+
+# Send CONFIG_FILES to the station's own ~/.config/IMN. Piped over ssh rather
+# than scp'd so the file lands with 0600 in the same step -- these are
+# credentials and must never sit world readable, however briefly.
+copy_config() {
+    local ip=$1 station=$2 user=$3
+    local file path failed=0
+
+    for file in "${CONFIG_FILES[@]}"; do
+        path=${CONFIG_DIR}/${file}
+
+        if [ ! -r "${path}" ]; then
+            echo "${PROGNAME}: no ${path} to copy" >&2
+            failed=1
+            continue
+        fi
+
+        if run_remote "${ip}" "${station}" "${user}" \
+            "mkdir -p ~/.config/IMN && umask 077 && cat > ~/.config/IMN/${file}" \
+            < "${path}"
+        then
+            echo "sent ${file}"
+        else
+            echo "${PROGNAME}: could not send ${file} to ${station}" >&2
+            failed=1
+        fi
+    done
+
+    return "${failed}"
+}
+
+
+# Visit one station: the mode's command, plus the config files for the modes
+# that deploy. --test only looks around, so it sends nothing.
+run_on_station() {
+    local ip=$1 station=$2 user=$3 user_command=$4 mode=$5
+    local status=0
+
+    echo "=== ${station} (${user}@${ip}) ==="
+
+    if [ "${mode}" != test ]; then
+        copy_config "${ip}" "${station}" "${user}" || status=1
+    fi
+
+    # </dev/null so the remote command cannot swallow the caller's stdin.
+    run_remote "${ip}" "${station}" "${user}" "${user_command}" </dev/null || status=1
+
+    return "${status}"
+}
+
+
+main() {
+    local mode=
+
+    while (( $# )); do
+        case $1 in
+        --test)   mode=test;  shift ;;
+        --clone)  mode=clone; shift ;;
+        --pull)   mode=pull;  shift ;;
+        -h|--help) usage 0 ;;
+        --) shift; break ;;
+        -*) die "unknown option '$1' (try --help)" ;;
+        *)  break ;;
+        esac
+    done
+
+    [ -n "${mode}" ] || die "one of --test, --clone or --pull is required"
+    [ -r "${STATIONS_FILE}" ] || die "cannot read ${STATIONS_FILE}"
+    command -v sshpass >/dev/null || die "sshpass is not installed"
+
+    local wanted=("$@")
+    local command failures=0 visited=0
+    command=$(remote_command "${mode}")
+
+    # The table is read on fd 3, not stdin: ssh drains its stdin, so a loop fed
+    # from stdin would lose every station after the first.
+    local ip station user
+    while IFS=$'\t' read -r -u 3 ip station user _; do
+
+        # Skip blank lines, comments and anything short of the three fields.
+        [ -n "${ip}" ] && [ "${ip:0:1}" != '#' ] || continue
+        [ -n "${station}" ] && [ -n "${user}" ] || {
+            echo "${PROGNAME}: ignoring malformed line: ${ip}" >&2
+            continue
+        }
+
+        if (( ${#wanted[@]} )); then
+            local match= want
+            for want in "${wanted[@]}"; do
+                [ "${want}" = "${station}" ] || [ "${want}" = "${ip}" ] && match=yes
+            done
+            [ -n "${match}" ] || continue
+        fi
+
+        (( visited++ ))
+        run_on_station "${ip}" "${station}" "${user}" "${command}" "${mode}" || {
+            echo "${PROGNAME}: ${station} failed (exit $?)" >&2
+            (( failures++ ))
+        }
+        echo
+
+    done 3< "${STATIONS_FILE}"
+
+    if (( ! visited )); then
+        die "no stations matched"
+    fi
+
+    echo "${visited} station(s) visited, ${failures} failed"
+    return "${failures}"
+}
+
+
+main "$@"

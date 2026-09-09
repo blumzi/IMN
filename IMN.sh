@@ -1,13 +1,14 @@
 #!/bin/bash
 
-if [ $# -ne 1 ]; then
-    echo "Missing Captured dir argument"
+if [ $# -ne 2 ]; then
+    echo "Usage: $(basename "$0") <captured_night_dir> <archived_night_dir>"
     exit 1
 fi
 
 captured_dir="${1}"
+archived_dir="${2}"
 
-cd ${captured_dir}
+cd "${captured_dir}" || { echo "Cannot cd to ${captured_dir}"; exit 1; }
 
        camera_name=$(basename $(pwd))
        camera_name=${camera_name%%_*}

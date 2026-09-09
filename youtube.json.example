@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy to ~/.config/IMN/youtube.json on the station. NEVER commit the real file. See youtube.py for how to obtain the refresh_token (python youtube.py authorize).",
+  "client_id": "REPLACE.apps.googleusercontent.com",
+  "client_secret": "REPLACE",
+  "refresh_token": "REPLACE",
+  "playlist_id": "PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "privacy": "unlisted"
+}
