@@ -13,6 +13,7 @@
 #
 # Usage:
 #     imn --test  [station ...]    pwd + ls on each station, to check reachability
+#     imn --log   [station ...]    fetch the log of the station's last night
 #     imn --clone [station ...]    git clone the IMN repo alongside RMS, and
 #                                  repoint the station's external_script_path
 #     imn --pull  [station ...]    git pull the station's IMN checkout
@@ -44,6 +45,9 @@ readonly REPO_URL=https://github.com/blumzi/IMN.git
 # which has any business on a station.
 readonly CONFIG_FILES=(youtube.json)
 
+# Where --log drops what it fetches.
+readonly LOG_DIR=${IMN_LOG_DIR:-./imn-logs}
+
 # Where IMN lives on a station: a sibling of RMS, both under ~/source.
 readonly PARENT_DIR='${HOME}/source'
 readonly CHECKOUT_DIR="${PARENT_DIR}/IMN"
@@ -62,7 +66,9 @@ readonly SSH_OPTS=(
 
 
 usage() {
-    sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//'
+    # The header comment IS the usage text; print it all rather than a line
+    # range that silently goes stale as the header grows.
+    awk 'NR>2 && /^#/ { sub(/^# ?/, ""); print; next } NR>2 { exit }' "$0"
     exit "${1:-2}"
 }
 
@@ -215,6 +221,50 @@ copy_config() {
 }
 
 
+# Bring back the log of the station's last night of processing.
+#
+# Not simply the newest log: RMS opens a fresh one when it restarts, so right
+# after a night's reboot the newest file is an idle session and the night's work
+# is in the one before it. The wanted log is the newest that RMS actually ran the
+# external script in, which is the marker RunExternalScript logs.
+#
+# Logs run to ~9MB, so it comes back gzipped over the wire.
+fetch_log() {
+    local ip=$1 station=$2 user=$3
+    local remote_log
+
+    remote_log=$(run_remote "${ip}" "${station}" "${user}" '
+        for f in $(ls -t ~/RMS_data/logs/log_*.log 2>/dev/null | head -5); do
+            if grep -q "Starting function" "$f"; then echo "$f"; exit 0; fi
+        done
+        ls -t ~/RMS_data/logs/log_*.log 2>/dev/null | head -1
+    ' </dev/null) || return 1
+
+    if [ -z "${remote_log}" ]; then
+        echo "${PROGNAME}: no logs found on ${station}" >&2
+        return 1
+    fi
+
+    mkdir -p "${LOG_DIR}"
+    local local_log="${LOG_DIR}/${station}_${remote_log##*/}"
+
+    run_remote "${ip}" "${station}" "${user}" "gzip -c '${remote_log}'" </dev/null \
+        | gunzip > "${local_log}" || return 1
+
+    echo "${remote_log} -> ${local_log} ($(wc -c <"${local_log}" | tr -d ' ') bytes)"
+
+    # The nightly hook's own lines are the point of fetching this, so surface
+    # them rather than making the reader open a 9MB file to find three lines.
+    local hook
+    hook=$(grep -E 'RunExternalScript|IMN\.bolides|IMN\.youtube|IMN:' "${local_log}" | tail -12)
+    if [ -n "${hook}" ]; then
+        echo "${hook}" | sed 's/^/    /'
+    else
+        echo "    (no external-script activity in this log)"
+    fi
+}
+
+
 # Visit one station: the mode's command, plus the config files for the modes
 # that deploy. --test only looks around, so it sends nothing.
 run_on_station() {
@@ -222,6 +272,11 @@ run_on_station() {
     local status=0
 
     echo "=== ${station} (${user}@${ip}) ==="
+
+    if [ "${mode}" = log ]; then
+        fetch_log "${ip}" "${station}" "${user}"
+        return
+    fi
 
     if [ "${mode}" != test ]; then
         copy_config "${ip}" "${station}" "${user}" || status=1
@@ -240,6 +295,7 @@ main() {
     while (( $# )); do
         case $1 in
         --test)   mode=test;  shift ;;
+        --log)    mode=log;   shift ;;
         --clone)  mode=clone; shift ;;
         --pull)   mode=pull;  shift ;;
         -h|--help) usage 0 ;;
@@ -249,7 +305,7 @@ main() {
         esac
     done
 
-    [ -n "${mode}" ] || die "one of --test, --clone or --pull is required"
+    [ -n "${mode}" ] || die "one of --test, --log, --clone or --pull is required"
     [ -r "${STATIONS_FILE}" ] || die "cannot read ${STATIONS_FILE}"
     command -v sshpass >/dev/null || die "sshpass is not installed"
 
