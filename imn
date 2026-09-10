@@ -162,6 +162,24 @@ else
     sed -i "s|^external_script_path:.*|external_script_path: \$target|" "\$config"
     echo "external_script_path: \$current -> \$target"
 fi
+
+# Without this RMS strips every log handler off the external script's process
+# (RunExternalScript.externalFunctionWrapper), so the nightly hook's own lines
+# go nowhere and a night's work leaves no trace in the log. RMS defaults it to
+# false, and configs written before the option existed have no such key at all.
+if grep -q "^external_script_log:[[:space:]]*true" "\$config"; then
+    echo "external_script_log already true"
+elif grep -q "^external_script_log:" "\$config"; then
+    cp -n "\$config" "\$config.imn-backup"
+    sed -i "s|^external_script_log:.*|external_script_log: true|" "\$config"
+    echo "external_script_log -> true"
+else
+    cp -n "\$config" "\$config.imn-backup"
+    # Insert rather than append: the config is sectioned, and the key has to
+    # land in the same section as the other external_script_* settings.
+    sed -i "/^external_function_name:/a external_script_log: true" "\$config"
+    echo "external_script_log: added, true"
+fi
 EOF
         ;;
     pull)
