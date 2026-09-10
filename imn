@@ -12,16 +12,16 @@
 # credentials -- keep it out of the repo and chmod 600.
 #
 # Usage:
-#     imn --test  [station ...]    pwd + ls on each station, to check reachability
-#     imn --log   [station ...]    fetch the log of the station's last night
-#     imn --clone [station ...]    git clone the IMN repo alongside RMS, and
+#     imn --test   [station ...]   pwd + ls on each station, to check reachability
+#     imn --log    [station ...]   fetch the log of the station's last night
+#     imn --init   [station ...]   git clone the IMN repo alongside RMS, and
 #                                  repoint the station's external_script_path
-#     imn --pull  [station ...]    git pull the station's IMN checkout
+#     imn --update [station ...]   git pull the station's IMN checkout
 #
-# --clone and --pull install requirements-bolides.txt into the station's ~/vRMS
+# --init and --update install requirements-bolides.txt into the station's ~/vRMS
 # when it is not already importable.
 #
-# --clone and --pull also push the station's share of ~/.config/IMN, so a
+# --init and --update also push the station's share of ~/.config/IMN, so a
 # station ends up with the credentials and settings the nightly job needs. Only
 # youtube.json and config.toml are sent, and config.toml only if it exists --
 # every tunable in it has a built-in default. NOT client_secret.json, which is
@@ -97,7 +97,7 @@ strip_comments() {
 
 # Install the bolide feature's Python dependencies into the station's RMS venv,
 # skipping the work when they import cleanly -- pip over the network is slow on
-# a Pi and this runs on every clone and pull.
+# a Pi and this runs on every init and update.
 #
 # Emitted into the mode scripts below via command substitution, whose output is
 # inserted literally, so the \$ escapes here survive to the station.
@@ -125,9 +125,9 @@ remote_command() {
     test)
         echo 'echo "host: $(hostname)"; pwd; ls'
         ;;
-    clone)
+    init)
         # Idempotent: a station that already has a checkout, or whose config
-        # already points at it, is left alone rather than failing, so --clone
+        # already points at it, is left alone rather than failing, so --init
         # can be re-run over the whole fleet.
         #
         # RMS calls IMN through external_script_path in the station's .config,
@@ -188,11 +188,11 @@ else
 fi
 EOF
         ;;
-    pull)
+    update)
         cat <<EOF
 set -e
 if [ ! -d ${CHECKOUT_DIR}/.git ]; then
-    echo "no checkout at ${CHECKOUT_DIR} -- run '${PROGNAME} --clone' first" >&2
+    echo "no checkout at ${CHECKOUT_DIR} -- run '${PROGNAME} --init' first" >&2
     exit 1
 fi
 cd ${CHECKOUT_DIR}
@@ -334,8 +334,8 @@ main() {
         case $1 in
         --test)   mode=test;  shift ;;
         --log)    mode=log;   shift ;;
-        --clone)  mode=clone; shift ;;
-        --pull)   mode=pull;  shift ;;
+        --init)   mode=init;   shift ;;
+        --update) mode=update; shift ;;
         -h|--help) usage 0 ;;
         --) shift; break ;;
         -*) die "unknown option '$1' (try --help)" ;;
@@ -343,7 +343,7 @@ main() {
         esac
     done
 
-    [ -n "${mode}" ] || die "one of --test, --log, --clone or --pull is required"
+    [ -n "${mode}" ] || die "one of --test, --log, --init or --update is required"
     [ -r "${STATIONS_FILE}" ] || die "cannot read ${STATIONS_FILE}"
     command -v sshpass >/dev/null || die "sshpass is not installed"
 
