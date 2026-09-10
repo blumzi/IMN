@@ -22,11 +22,12 @@
 # when it is not already importable.
 #
 # --clone and --pull also push the station's share of ~/.config/IMN, so a
-# station ends up with the credentials the nightly job needs. Only youtube.json
-# is sent. NOT client_secret.json, which is only needed where 'youtube.py
-# authorize' is run, and emphatically NOT the stations file, which holds every
-# station's password -- copying that to a station would hand one station the
-# credentials of the whole fleet.
+# station ends up with the credentials and settings the nightly job needs. Only
+# youtube.json and config.toml are sent, and config.toml only if it exists --
+# every tunable in it has a built-in default. NOT client_secret.json, which is
+# only needed where 'youtube.py authorize' is run, and emphatically NOT the
+# stations file, which holds every station's password -- copying that to a
+# station would hand one station the credentials of the whole fleet.
 #
 # With no station arguments every station in the file is visited. Otherwise only
 # the ones whose station name or ip matches an argument. Stations are visited in
@@ -43,7 +44,12 @@ readonly REPO_URL=https://github.com/blumzi/IMN.git
 # The only files a station needs from ~/.config/IMN. Deliberately a whitelist:
 # that directory also holds client_secret.json and the stations file, neither of
 # which has any business on a station.
-readonly CONFIG_FILES=(youtube.json)
+readonly CONFIG_FILES=(youtube.json config.toml)
+
+# Of those, the ones a station can do without. config.toml is all tunables and
+# every key has a built-in default, so its absence is normal rather than a
+# failure; youtube.json is not optional, since without it nothing can upload.
+readonly OPTIONAL_CONFIG_FILES=(config.toml)
 
 # Where --log drops what it fetches.
 readonly LOG_DIR=${IMN_LOG_DIR:-./imn-logs}
@@ -101,7 +107,7 @@ if [ ! -x ${VENV}/bin/python ]; then
     echo "no venv at ${VENV} -- bolide dependencies not installed" >&2
 elif [ ! -f ${REQUIREMENTS} ]; then
     echo "no ${REQUIREMENTS} -- bolide dependencies not installed" >&2
-elif ${VENV}/bin/python -c 'import googleapiclient, google.oauth2, google_auth_oauthlib' 2>/dev/null; then
+elif ${VENV}/bin/python -c 'import googleapiclient, google.oauth2, google_auth_oauthlib, importlib.util; assert any(importlib.util.find_spec(m) for m in ("tomllib", "tomli", "toml"))' 2>/dev/null; then
     echo "bolide dependencies already installed"
 else
     echo "installing bolide dependencies ..."
@@ -208,6 +214,16 @@ run_remote() {
 }
 
 
+is_optional_config() {
+    local name candidate
+    name=$1
+    for candidate in "${OPTIONAL_CONFIG_FILES[@]}"; do
+        [ "${candidate}" = "${name}" ] && return 0
+    done
+    return 1
+}
+
+
 # Send CONFIG_FILES to the station's own ~/.config/IMN. Piped over ssh rather
 # than scp'd so the file lands with 0600 in the same step -- these are
 # credentials and must never sit world readable, however briefly.
@@ -219,8 +235,12 @@ copy_config() {
         path=${CONFIG_DIR}/${file}
 
         if [ ! -r "${path}" ]; then
-            echo "${PROGNAME}: no ${path} to copy" >&2
-            failed=1
+            if is_optional_config "${file}"; then
+                echo "no ${file} here; station keeps its defaults"
+            else
+                echo "${PROGNAME}: no ${path} to copy" >&2
+                failed=1
+            fi
             continue
         fi
 

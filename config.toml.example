@@ -1,0 +1,35 @@
+# Tunable parameters for the IMN station scripts.
+#
+# Copy to ~/.config/IMN/config.toml and edit. The file is optional -- every key
+# below shows its built-in default, so an absent or empty file behaves exactly
+# as the code does with no config at all. `imn --clone` and `imn --pull` copy it
+# to the stations alongside youtube.json.
+#
+# Credentials do NOT belong here. They live in youtube.json, which is written
+# 0600 and handled separately.
+
+[bolides]
+# How many of a night's bolides to publish, at most.
+n = 3
+
+# Keep meteors whose peak APPARENT magnitude is at or brighter than this.
+# Less negative admits more; -1.0 is roughly "brighter than Sirius".
+mag_threshold = -1.0
+
+# A bolide crosses the frame in well under a second, too quick to watch, so
+# every clip is retimed before upload: played this many times slower...
+slowdown = 2.0
+
+# ...then frozen on its last frame for this long, so the trail stays up.
+hold_seconds = 1.5
+
+[trackstack]
+# Seconds before a track stack is abandoned. TrackStack re-reads every FF file
+# in the night and runs inside rmsExternal, which holds the reboot lock that RMS
+# only ever waits on -- an unbounded stack delays the station's reboot and can
+# run into the next capture window. This bound is per shower.
+timeout = 7200
+
+# Associations needed on a night before a shower counts as active for this
+# station. Below this, a single marginal association would earn its own video.
+min_meteors = 4

@@ -41,6 +41,8 @@ import struct
 import logging
 import subprocess
 
+import imnconfig
+
 log = logging.getLogger("IMN.bolides")
 
 
@@ -50,15 +52,20 @@ log = logging.getLogger("IMN.bolides")
 #    background, snr, saturated_count]
 _RA, _DEC, _MAG, _SAT = 4, 5, 9, 12
 
-DEFAULT_N = 3
-DEFAULT_MAG_THRESHOLD = -1.0
 STAGING_SUBDIR = "IMN_bolides"
+
+# Tunables, from ~/.config/IMN/config.toml where it exists (see imnconfig.py and
+# config.toml.example); the values below are the built-in defaults. Read once at
+# import: the nightly hook is a fresh process each night, so editing the config
+# takes effect on the next run without any reload machinery.
+DEFAULT_N = imnconfig.get("bolides", "n")
+DEFAULT_MAG_THRESHOLD = imnconfig.get("bolides", "mag_threshold")
 
 # A bolide crosses the frame in well under a second, which is too quick to watch.
 # Every clip is retimed before upload: played at 1/SLOWDOWN speed, then holding
 # the last frame for HOLD_SECONDS so the trail stays on screen.
-SLOWDOWN = 2.0
-HOLD_SECONDS = 1.5
+SLOWDOWN = imnconfig.get("bolides", "slowdown")
+HOLD_SECONDS = imnconfig.get("bolides", "hold_seconds")
 
 
 def _is_num(v):

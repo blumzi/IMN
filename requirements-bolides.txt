@@ -10,3 +10,8 @@ google-auth-oauthlib
 # google-auth-oauthlib excludes it. Carrying that library's own constraint here
 # gets a compatible pair, since a specifier given directly IS honoured.
 google-auth!=2.43.0,!=2.44.0,!=2.45.0,<3.0.0,>=2.15.0
+
+# TOML parsing for config.toml. Python 3.11+ has tomllib in the stdlib; the
+# stations are on 3.7, where pip resolves this to the last tomli that still
+# supported it.
+tomli; python_version < "3.11"
