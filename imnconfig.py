@@ -47,8 +47,15 @@ DEFAULTS = {
         "hold_seconds": 1.5,
     },
     "trackstack": {
+        "enabled": False,
         "timeout": 7200,
+        "total_timeout": 14400,
         "min_meteors": 4,
+        "stacks_dir": "~/imn/stacks",
+        "state_file": "~/imn/trackstacks.json",
+        "framerate": 3.0,
+        "generations": 2,
+        "grace_nights": 3,
     },
 }
 

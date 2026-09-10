@@ -8,6 +8,7 @@ import subprocess
 from RMS.CaptureDuration import captureDuration
 
 import bolides
+import trackstacks
 
 log = logging.getLogger("IMN")
 
@@ -78,6 +79,15 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 			bolides.publish_bolides(archived_night_dir, config)
 		except Exception as e:
 			log.error("bolide publishing failed: %r", e)
+
+		# Rebuild and republish the cumulative track-stack video for every
+		# shower this station is currently seeing. Off unless enabled in
+		# config.toml, and guarded the same way -- it is the expensive part of
+		# the night and must never be what stops a station finishing.
+		try:
+			trackstacks.publish_shower_stacks(archived_night_dir, config)
+		except Exception as e:
+			log.error("track stack publishing failed: %r", e)
 
 	finally:
 		if os.path.exists(lock_file):

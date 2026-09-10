@@ -112,6 +112,19 @@ class Uploader(object):
     def upload_video(self, path, title, description, tags=None, station=None):
         """ Upload one video file, add it to the station's playlist, and return
             its YouTube video id. """
+        video_id, _items = self.publish_video(path, title, description, tags, station)
+        return video_id
+
+    def publish_video(self, path, title, description, tags=None, station=None):
+        """ Upload one video file and return (video_id, playlist_item_ids).
+
+            The item ids matter to anything that later retires the video: the
+            API has no way to find the playlist entry for a video short of
+            listing or searching, and search.list costs 100 units against a
+            100/day cap. Callers that mean to retire what they upload must
+            persist these; upload_video() above is the shorthand for callers
+            that never will.
+        """
         from googleapiclient.http import MediaFileUpload
 
         body = {
@@ -135,10 +148,13 @@ class Uploader(object):
             _status, response = request.next_chunk()
         video_id = response["id"]
 
+        item_ids = []
         for playlist_id in self._resolve_playlists(station):
-            self._add_to_playlist(playlist_id, video_id)
+            item_id = self._add_to_playlist(playlist_id, video_id)
+            if item_id:
+                item_ids.append(item_id)
 
-        return video_id
+        return video_id, item_ids
 
     def _resolve_playlists(self, station):
         """ Return every playlist id this video belongs in: the station's own,
@@ -205,16 +221,43 @@ class Uploader(object):
         return response["id"]
 
     def _add_to_playlist(self, playlist_id, video_id):
+        """ Add a video to a playlist and return the playlist ITEM id, which is
+            what a later removal needs -- it identifies the entry, not the
+            video. None if the add failed. """
         try:
-            self.youtube.playlistItems().insert(
+            response = self.youtube.playlistItems().insert(
                 part="snippet",
                 body={"snippet": {
                     "playlistId": playlist_id,
                     "resourceId": {"kind": "youtube#video", "videoId": video_id},
                 }},
             ).execute()
+            return response["id"]
         except Exception as e:
             log.error("could not add %s to playlist %s: %r", video_id, playlist_id, e)
+            return None
+
+    def retire_video(self, video_id, playlist_item_ids=()):
+        """ Remove a video from its playlists and delete it.
+
+            Best effort throughout: something already gone -- deleted by hand,
+            or left behind by a half-failed earlier run -- must not abort the
+            caller. Losing track of one orphan beats wedging a daily rebuild.
+            Returns True only if the video itself is now gone.
+        """
+        for item_id in playlist_item_ids:
+            try:
+                self.youtube.playlistItems().delete(id=item_id).execute()
+            except Exception as e:
+                log.warning("could not remove playlist item %s: %r", item_id, e)
+
+        try:
+            self.youtube.videos().delete(id=video_id).execute()
+            log.info("retired video %s", video_id)
+            return True
+        except Exception as e:
+            log.error("could not delete video %s: %r", video_id, e)
+            return False
 
 
 def get_uploader():

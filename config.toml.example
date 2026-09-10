@@ -24,12 +24,43 @@ slowdown = 2.0
 hold_seconds = 1.5
 
 [trackstack]
-# Seconds before a track stack is abandoned. TrackStack re-reads every FF file
-# in the night and runs inside rmsExternal, which holds the reboot lock that RMS
-# only ever waits on -- an unbounded stack delays the station's reboot and can
-# run into the next capture window. This bound is per shower.
+# Off by default. This is the expensive half of the nightly hook and it runs on
+# a Pi, so it is opt-in per station.
+enabled = false
+
+# Seconds before a single shower's track stack is abandoned. TrackStack re-reads
+# every FF file in the night and runs inside rmsExternal, which holds the reboot
+# lock that RMS only ever waits on -- an unbounded stack delays the station's
+# reboot and can run into the next capture window.
 timeout = 7200
+
+# Seconds for ALL of a night's stacks together. Showers are taken in order of
+# how many meteors each had, so when the budget runs out it is the quietest
+# shower that is dropped. In December six showers can be active at once and
+# six times the per-shower timeout would run well past dawn.
+total_timeout = 14400
 
 # Associations needed on a night before a shower counts as active for this
 # station. Below this, a single marginal association would earn its own video.
 min_meteors = 4
+
+# Where the per-night stack images accumulate, and where the published video
+# ids are remembered. Deliberately outside RMS_data: RMS reaps old night
+# directories to stay inside its quota, and anything under data_dir both risks
+# being deleted and counts against that quota.
+stacks_dir = "~/imn/stacks"
+state_file = "~/imn/trackstacks.json"
+
+# Seconds each night's frame is held in the cumulative video. A 17 night
+# Geminid run at 3 seconds a frame is about a minute.
+framerate = 3.0
+
+# How many uploads to keep live per shower. A fresh upload is not immediately
+# playable -- YouTube transcodes for minutes -- so retiring yesterday's in the
+# same run can leave nothing watchable. Two keeps a finished video up at all
+# times. Setting this to 1 restores same-run replacement.
+generations = 2
+
+# Nights without a qualifying detection before a shower is considered over for
+# this station.
+grace_nights = 3
