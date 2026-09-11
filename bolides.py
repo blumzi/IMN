@@ -383,6 +383,30 @@ def _render_directly(archived_dir, bolide, config, staging_root):
     return [mp4_path] if ok else []
 
 
+def _frame_count(mp4_path, ffmpeg_binary):
+    """ Number of frames in a clip, or None if it cannot be determined.
+
+        Reads the container's own count rather than decoding, which is instant
+        but can be absent on some files -- hence the None.
+    """
+    ffprobe = "ffprobe"
+    if ffmpeg_binary and os.path.basename(ffmpeg_binary).startswith("ffmpeg"):
+        candidate = os.path.join(os.path.dirname(ffmpeg_binary),
+                                 os.path.basename(ffmpeg_binary).replace("ffmpeg", "ffprobe", 1))
+        if os.path.dirname(ffmpeg_binary) == "" or os.path.isfile(candidate):
+            ffprobe = candidate
+
+    try:
+        output = subprocess.check_output(
+            [ffprobe, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=nb_frames", "-of", "default=nk=1:nw=1",
+             mp4_path])
+        return int(output.decode().strip().splitlines()[0])
+    except Exception as e:
+        log.debug("ffprobe on %s failed: %r", mp4_path, e)
+        return None
+
+
 def _retime(mp4_path, config, slowdown=SLOWDOWN, hold=HOLD_SECONDS):
     """ Slow a clip down and hold its last frame, in place.
 
@@ -400,8 +424,23 @@ def _retime(mp4_path, config, slowdown=SLOWDOWN, hold=HOLD_SECONDS):
         return mp4_path
 
     tmp_path = mp4_path + ".retimed.mp4"
-    vf = "setpts={:.3f}*PTS,tpad=stop_mode=clone:stop_duration={:.3f}".format(
-        slowdown, hold)
+
+    # The obvious filter for holding the last frame is tpad, but that needs
+    # ffmpeg 4.2 and the stations run 4.1.4 -- it fails there with "No such
+    # filter: 'tpad'" and the clip uploads unslowed. The loop filter has been
+    # around far longer: point it at the final frame and repeat it. That needs
+    # the frame count, so a clip we cannot measure is slowed but not held.
+    frames = _frame_count(mp4_path, ffmpeg_binary)
+    if frames:
+        # Each held frame lasts slowdown/fps seconds once setpts has stretched
+        # the timeline, so this many of them cover the requested hold.
+        repeats = max(1, int(round(hold * config.fps / float(slowdown))))
+        vf = "loop=loop={:d}:size=1:start={:d},setpts={:.3f}*PTS".format(
+            repeats, frames - 1, slowdown)
+    else:
+        log.warning("could not count frames in %s; slowing without a hold", mp4_path)
+        vf = "setpts={:.3f}*PTS".format(slowdown)
+
     cmd = [ffmpeg_binary, "-y", "-hide_banner", "-loglevel", "error",
            "-i", mp4_path, "-filter:v", vf,
            "-r", str(config.fps), "-an",

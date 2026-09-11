@@ -44,13 +44,15 @@ def _path(key):
     return os.path.expanduser(imnconfig.get("trackstack", key))
 
 
-def active_showers(archived_dir, config):
-    """ Return [(code, meteor_count)] for showers this station saw last night,
-        best represented first.
+def analyse_night(archived_dir, config):
+    """ Associate last night's meteors with showers.
 
-        The only RMS-dependent step besides the stack itself. showerAssociation
-        returns (associations, shower_counts); shower_counts is ranked, and its
-        None entry is sporadics, which must be dropped.
+        Returns (ranked, ff_by_shower):
+          ranked       -- [(code, count)] over min_meteors, best represented first
+          ff_by_shower -- {code: sorted [FF file names] containing its meteors}
+
+        The FF mapping is why we do the association ourselves rather than
+        letting TrackStack filter: see _stage_shower().
     """
     from Utils.ShowerAssociation import showerAssociation
     from RMS.Formats.FTPdetectinfo import findFTPdetectinfoFile
@@ -58,38 +60,135 @@ def active_showers(archived_dir, config):
     ftp_path = findFTPdetectinfoFile(archived_dir)
     if not ftp_path:
         log.warning("no FTPdetectinfo in %s; no showers", archived_dir)
-        return []
+        return [], {}
 
-    _associations, shower_counts = showerAssociation(
+    associations, shower_counts = showerAssociation(
         config, [ftp_path], show_plot=False, save_plot=False)
 
+    # associations maps (ff_name, meteor_number) -> (meteor, shower). Every
+    # meteor counts, whatever its number within the FF.
+    ff_by_shower = {}
+    for (ff_name, _meteor_no), (_meteor, shower) in associations.items():
+        if shower is not None:
+            ff_by_shower.setdefault(shower.name, set()).add(os.path.basename(ff_name))
+
     minimum = imnconfig.get("trackstack", "min_meteors")
-    showers = [(shower.name, count) for shower, count in shower_counts
-               if shower is not None and count >= minimum]
+    ranked = [(shower.name, count) for shower, count in shower_counts
+              if shower is not None and count >= minimum]
 
     log.info("active showers in %s: %s", archived_dir,
-             ", ".join("{}({})".format(c, n) for c, n in showers) or "none")
-    return showers
+             ", ".join("{}({})".format(c, n) for c, n in ranked) or "none")
+
+    return ranked, {code: sorted(ffs) for code, ffs in ff_by_shower.items()}
 
 
-def make_stack(archived_dir, code, config, out_dir, timeout):
+def active_showers(archived_dir, config):
+    """ Just the ranked [(code, count)], for callers that do not need the FFs. """
+    ranked, _ff_by_shower = analyse_night(archived_dir, config)
+    return ranked
+
+
+def _stage_shower(archived_dir, code, ff_names, stage_root, config):
+    """ Build a directory holding only one shower's FF files, for TrackStack.
+
+        TrackStack's own -s/--showers filter cannot be used: shouldInclude()
+        looks the FF up as associations[(ff_name, 1.0)], hardcoding meteor
+        number 1, so an FF whose shower meteor is not the first detection is
+        silently dropped -- and a bare except turns every miss into a quiet
+        False. On a real night that left nothing to stack and produced a
+        uniformly white image. RMS is vendored and not ours to fix.
+
+        Unfiltered, TrackStack takes its FF list from os.listdir() intersected
+        with the recalibrated platepars, so a directory containing just this
+        shower's FFs stacks exactly them. Same staging trick bolides.py uses
+        for FRbinViewer.
+
+        Returns the staging directory, or None if there is too little to stack.
+    """
+    # TrackStack needs at least two FFs to establish a reference frame.
+    if len(ff_names) < 2:
+        log.info("%s has only %d FF file(s); too few to stack", code, len(ff_names))
+        return None
+
+    stage = os.path.join(stage_root,
+                         os.path.basename(archived_dir.rstrip(os.sep)) + "_" + code)
+    if not os.path.isdir(stage):
+        os.makedirs(stage)
+
+    linked = 0
+    for ff_name in ff_names:
+        source = os.path.join(archived_dir, ff_name)
+        if not os.path.isfile(source):
+            continue
+        target = os.path.join(stage, ff_name)
+        if not os.path.exists(target):
+            os.symlink(source, target)      # symlink: an FF is several MB
+        linked += 1
+
+    if linked < 2:
+        log.warning("%s: only %d FF file(s) present on disk; not stacking", code, linked)
+        return None
+
+    # The platepars are what TrackStack aligns against, and it reads them from
+    # the directory it is pointed at. A real copy, not a link: it is small, and
+    # some RMS paths rewrite it.
+    platepars = os.path.join(archived_dir, config.platepars_recalibrated_name)
+    if not os.path.isfile(platepars):
+        log.error("no %s in %s; cannot stack",
+                  config.platepars_recalibrated_name, archived_dir)
+        return None
+    shutil.copy2(platepars, os.path.join(stage, config.platepars_recalibrated_name))
+
+    log.info("staged %d FF file(s) for %s", linked, code)
+    return stage
+
+
+def _looks_blank(image_path):
+    """ True if the image carries no detail.
+
+        TrackStack can exit successfully having plotted nothing, leaving a
+        uniformly white canvas. Without this a blank night would be archived
+        and then baked into every rebuild from then on.
+    """
+    try:
+        import cv2
+        image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        if image is None:
+            return True
+        return float(image.std()) < 1.0
+    except Exception as e:
+        log.warning("could not inspect %s (%r); assuming it is fine", image_path, e)
+        return False
+
+
+def make_stack(archived_dir, code, config, out_dir, timeout, ff_names, stage_root,
+               caption=""):
     """ Render one shower's track stack, returning the image path or None.
 
-        A subprocess, not a call to trackStack(): only that makes the wall-clock
-        bound enforceable, and it contains a crash in a C extension instead of
-        taking the whole nightly hook down with it.
+        Stacks a staged directory of just this shower's FF files rather than
+        passing -s: see _stage_shower() for why TrackStack's own filter is
+        unusable.
+
+        The work happens in trackstack_runner.py, as a subprocess. A subprocess
+        because only that makes the wall-clock bound enforceable and contains a
+        crash in a C extension; a runner of our own because RMS cannot save the
+        stack it computes on these stations -- see that module.
     """
     import sys
 
-    before = set(glob.glob(os.path.join(out_dir, "*.jpg")))
+    stage = _stage_shower(archived_dir, code, ff_names, stage_root, config)
+    if stage is None:
+        return None
 
-    cmd = [sys.executable, "-m", "Utils.TrackStack", archived_dir,
-           "-c", config.config_file_name,
-           "-s", code,
-           "-o", out_dir,
-           "-t", "2",        # stamp station, date and meteor count on the image
-           "-x",             # never try to open a window; headless on the Pi
-           "--freecore"]
+    # The staging directory is already named <night>_<CODE>, so its basename is
+    # the distinguishing part; appending the code again just doubles it.
+    out_path = os.path.join(out_dir, os.path.basename(stage) + ".jpg")
+    runner = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "trackstack_runner.py")
+
+    cmd = [sys.executable, runner, stage, out_path,
+           "--rms-root", config.rms_root_dir,
+           "--caption", caption]
 
     log.info("stacking %s (timeout %ds)", code, timeout)
     started = time.time()
@@ -104,17 +203,19 @@ def make_stack(archived_dir, code, config, out_dir, timeout):
         log.error("TrackStack for %s failed: %r", code, e)
         return None
 
-    if status != 0:
-        log.error("TrackStack for %s exited with status %d", code, status)
+    if status != 0 or not os.path.isfile(out_path):
+        log.error("TrackStack for %s produced no image (status %s)", code, status)
         return None
 
-    produced = sorted(set(glob.glob(os.path.join(out_dir, "*.jpg"))) - before)
-    if not produced:
-        log.error("TrackStack for %s produced no image", code)
+    # The runner checks this too; repeated here because a blank frame archived
+    # once is baked into every rebuild from then on.
+    if _looks_blank(out_path):
+        log.error("TrackStack for %s produced a blank image; discarding", code)
+        os.remove(out_path)
         return None
 
     log.info("stacked %s in %ds", code, int(time.time() - started))
-    return produced[0]
+    return out_path
 
 
 def archive_stack(image_path, station, code, night):
@@ -288,7 +389,7 @@ def publish_shower_stacks(archived_dir, config, no_upload=False):
     year = night[:4]
     state = load_state()
 
-    showers = active_showers(archived_dir, config)
+    showers, ff_by_shower = analyse_night(archived_dir, config)
     seen = set()
 
     # Stack tonight's showers, best represented first, until the budget is out.
@@ -304,8 +405,11 @@ def publish_shower_stacks(archived_dir, config, no_upload=False):
                 break
 
             started = time.time()
+            caption = "{}  {}-{}-{}  {}: {} meteors".format(
+                station, night[:4], night[4:6], night[6:8], code, count)
             image = make_stack(archived_dir, code, config, tmp_dir,
-                               int(min(per_shower, budget)))
+                               int(min(per_shower, budget)),
+                               ff_by_shower.get(code, []), tmp_dir, caption)
             budget -= time.time() - started
             if image is None:
                 continue
