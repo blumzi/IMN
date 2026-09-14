@@ -73,11 +73,13 @@ def analyse_night(archived_dir, config):
             ff_by_shower.setdefault(shower.name, set()).add(os.path.basename(ff_name))
 
     minimum = imnconfig.get("trackstack", "min_meteors")
-    ranked = [(shower.name, count) for shower, count in shower_counts
-              if shower is not None and count >= minimum]
+    ranked = [(shower.name, count) for shower, count in shower_counts if shower is not None and count >= minimum]
 
-    log.info("active showers in %s: %s", archived_dir,
-             ", ".join("{}({})".format(c, n) for c, n in ranked) or "none")
+    if len(ranked) > 0:
+        log.info("active showers in %s: %s", archived_dir,
+                ", ".join("{}({})".format(c, n) for c, n in ranked))
+    else:
+        log.info(f"no active showers in {archived_dir} with at least {minimum} meteors")
 
     return ranked, {code: sorted(ffs) for code, ffs in ff_by_shower.items()}
 
