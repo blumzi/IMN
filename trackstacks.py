@@ -325,19 +325,6 @@ def state_key(station, code, year):
 
 # ------------------------------------------------------------- orchestration
 
-def _night_of(archived_dir):
-    """ The night's date as YYYYMMDD, from the archive directory name.
-
-        RMS names these <STATION>_<YYYYMMDD>_<HHMMSS>_<us>, so the date is the
-        second field. Returns None if the name does not look like that.
-    """
-    parts = os.path.basename(archived_dir.rstrip(os.sep)).split("_")
-    if len(parts) > 1 and len(parts[1]) == 8 and parts[1].isdigit():
-        return parts[1]
-    log.warning("cannot read a night date from %s", archived_dir)
-    return None
-
-
 def _title(station, code, year, images, meteors):
     """ Put currency in the title: how much is covered, and how recent. """
     nights = len(images)
@@ -383,7 +370,7 @@ def publish_shower_stacks(archived_dir, config, no_upload=False):
 
     import bolides
 
-    night = _night_of(archived_dir)
+    night = bolides.night_of(archived_dir)
     if night is None:
         return []
 
@@ -469,10 +456,16 @@ def publish_shower_stacks(archived_dir, config, no_upload=False):
             if uploader is not None:
                 title = _title(station, code, year, images, entry["meteors"])
                 description = _description(station, code, year, images, entry["meteors"])
+                # The playlist key is the shower, not the month: a track stack
+                # is one running video per shower per year, replaced nightly,
+                # so a month-split playlist would scatter one shower's
+                # generations across two playlists whenever it crossed a
+                # boundary -- which the Quadrantids do every year.
+                keys = dict(bolides.playlist_keys(night), shower=code)
                 video_id, item_ids = uploader.publish_video(
                     out_path, title, description,
                     tags=["meteor", "meteor shower", code, "IMN", station],
-                    station=station)
+                    station=station, kind="trackstack", playlist_keys=keys)
                 log.info("published %s %s -> https://youtu.be/%s", station, code, video_id)
 
                 entry.setdefault("generations", []).insert(

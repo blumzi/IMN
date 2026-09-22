@@ -10,10 +10,12 @@
           "client_secret": "....",
           "refresh_token": "....",
           "privacy":       "unlisted",    # optional; unlisted (default) | public | private
-          "playlist_title": "IMN/{station}",   # optional; per-station playlist name
+          "playlist_title": "IMN/{station}/{month}",       # optional; see below
+          "trackstack_playlist_title": "IMN/{station}/{shower}-{year}",
           "playlist_privacy": "public",   # optional; visibility of created playlists
           "common_playlist_id": "PL....", # optional; every upload also goes here
           "playlist_id":   "PL....",      # optional; one fixed playlist, overrides per-station
+          "channel_id":    "UC....",      # written by this module: whose playlists these are
           "playlists":     {}             # written by this module: title -> playlist id
         }
 
@@ -22,6 +24,19 @@
     YouTube has no folder hierarchy: playlists are flat and cannot nest, so the
     "IMN/<station>" path lives in the playlist title. To group them into a shelf
     on the channel page, use Studio -> Customization -> Layout.
+
+    A single playlist per station grows without bound, so the title is a template
+    split by period. It is formatted against {station} plus whatever keys the
+    caller supplies -- {night}, {month}, {year}, and {shower} for track stacks.
+    Periods come from the capture night, never from today: the nightly hook runs
+    after dawn, so a night captured on the 31st is published on the 1st.
+
+    Templates are per upload kind: a "<kind>_playlist_title" is used if present,
+    otherwise "playlist_title". str.format ignores keys a template does not
+    mention, so the old flat "IMN/{station}" keeps resolving to exactly the
+    playlist it always did -- splitting is opt-in, one config key per station.
+    Month keys are zero-padded so titles sort lexicographically, which is the
+    only ordering the channel page offers.
 
     One-time setup to mint the refresh_token from an OAuth client secret:
         1. Create an OAuth 2.0 "Desktop app" client in Google Cloud, download
@@ -46,6 +61,10 @@ SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube",
 ]
+
+# The pre-split title. Kept as the default so a station whose youtube.json has no
+# "playlist_title" behaves exactly as it did before periods existed.
+DEFAULT_PLAYLIST_TITLE = "IMN/{station}"
 
 _CONFIG_DIR = os.path.expanduser("~/.config/IMN")
 _CONFIG_PATH = os.environ.get("IMN_YOUTUBE_CONFIG", os.path.join(_CONFIG_DIR, "youtube.json"))
@@ -94,7 +113,7 @@ class Uploader(object):
         self.cfg = cfg
         self.playlist_id = cfg.get("playlist_id")
         self.common_playlist_id = cfg.get("common_playlist_id")
-        self.playlist_title = cfg.get("playlist_title", "IMN/{station}")
+        self.playlist_title = cfg.get("playlist_title", DEFAULT_PLAYLIST_TITLE)
         self.playlist_privacy = cfg.get("playlist_privacy", "public")
         self.privacy = cfg.get("privacy", "unlisted")
 
@@ -109,13 +128,16 @@ class Uploader(object):
         # cache_discovery=False avoids a file-cache warning on headless installs.
         self.youtube = build("youtube", "v3", credentials=creds, cache_discovery=False)
 
-    def upload_video(self, path, title, description, tags=None, station=None):
+    def upload_video(self, path, title, description, tags=None, station=None,
+                     kind=None, playlist_keys=None):
         """ Upload one video file, add it to the station's playlist, and return
             its YouTube video id. """
-        video_id, _items = self.publish_video(path, title, description, tags, station)
+        video_id, _items = self.publish_video(path, title, description, tags,
+                                              station, kind, playlist_keys)
         return video_id
 
-    def publish_video(self, path, title, description, tags=None, station=None):
+    def publish_video(self, path, title, description, tags=None, station=None,
+                      kind=None, playlist_keys=None):
         """ Upload one video file and return (video_id, playlist_item_ids).
 
             The item ids matter to anything that later retires the video: the
@@ -124,6 +146,10 @@ class Uploader(object):
             100/day cap. Callers that mean to retire what they upload must
             persist these; upload_video() above is the shorthand for callers
             that never will.
+
+            kind selects the playlist title template ("<kind>_playlist_title",
+            falling back to "playlist_title"), and playlist_keys are the period
+            fields that template may use. See the module docstring.
         """
         from googleapiclient.http import MediaFileUpload
 
@@ -149,37 +175,58 @@ class Uploader(object):
         video_id = response["id"]
 
         item_ids = []
-        for playlist_id in self._resolve_playlists(station):
+        for playlist_id in self._resolve_playlists(station, kind, playlist_keys):
             item_id = self._add_to_playlist(playlist_id, video_id)
             if item_id:
                 item_ids.append(item_id)
 
         return video_id, item_ids
 
-    def _resolve_playlists(self, station):
+    def _resolve_playlists(self, station, kind=None, playlist_keys=None):
         """ Return every playlist id this video belongs in: the station's own,
             plus the channel-wide "common_playlist_id" if one is configured.
             Playlist membership is by reference, so a video sits in both at no
             cost beyond one playlistItems.insert each. """
         ids = []
-        station_playlist = self._resolve_station_playlist(station)
+        station_playlist = self._resolve_station_playlist(station, kind, playlist_keys)
         if station_playlist:
             ids.append(station_playlist)
         if self.common_playlist_id and self.common_playlist_id not in ids:
             ids.append(self.common_playlist_id)
         return ids
 
-    def _resolve_station_playlist(self, station):
-        """ Return the playlist id for this station, or None. A fixed
-            "playlist_id" in the config wins; otherwise the per-station playlist
-            named by "playlist_title" is looked up, created if missing, and its
-            id cached in the config so later runs cost one quota unit. """
+    def _playlist_title_for(self, kind):
+        """ The title template for this upload kind, falling back to the shared
+            one. A per-kind key exists because the natural period differs: a
+            bolide belongs to a month, a track stack to a shower and a year. """
+        if kind:
+            template = self.cfg.get("{}_playlist_title".format(kind))
+            if template:
+                return template
+        return self.playlist_title
+
+    def _resolve_station_playlist(self, station, kind=None, playlist_keys=None):
+        """ Return the playlist id for this station and period, or None. A fixed
+            "playlist_id" in the config wins; otherwise the playlist named by the
+            formatted title is looked up, created if missing, and its id cached
+            in the config so later runs cost one quota unit. """
         if self.playlist_id:
             return self.playlist_id
         if not station:
             return None
 
-        title = self.playlist_title.format(station=station)
+        template = self._playlist_title_for(kind)
+        fields = dict(playlist_keys or {}, station=station)
+        try:
+            title = template.format(**fields)
+        except (KeyError, IndexError) as e:
+            # A template naming a key this caller does not supply is a config
+            # typo, and one must not cost the night's upload its playlist.
+            log.error("playlist title %r wants %s, which %s uploads do not supply; "
+                      "falling back to %r", template, e, kind or "these",
+                      DEFAULT_PLAYLIST_TITLE)
+            title = DEFAULT_PLAYLIST_TITLE.format(station=station)
+
         cache = self.cfg.setdefault("playlists", {})
         if title in cache:
             return cache[title]
@@ -195,15 +242,28 @@ class Uploader(object):
         return playlist_id
 
     def _find_playlist(self, title):
-        """ Return the id of this channel's playlist with that exact title. """
+        """ Return the id of this channel's playlist with that exact title.
+
+            Every title seen on the way is cached, not just the one asked for.
+            Splitting by period means the channel accumulates hundreds of
+            playlists, and paging all of them to answer one miss and then doing
+            it again for the next miss is the slow part of a cold start. One
+            scan now resolves every later lookup for free; the cost is identical.
+        """
+        cache = self.cfg.setdefault("playlists", {})
+        found = None
+
         request = self.youtube.playlists().list(part="snippet", mine=True, maxResults=50)
         while request is not None:
             response = request.execute()
             for item in response.get("items", []):
+                cache.setdefault(item["snippet"]["title"], item["id"])
                 if item["snippet"]["title"] == title:
-                    return item["id"]
+                    found = item["id"]
             request = self.youtube.playlists().list_next(request, response)
-        return None
+
+        _save_config(self.cfg)
+        return found
 
     def _create_playlist(self, title, station):
         response = self.youtube.playlists().insert(
@@ -211,7 +271,7 @@ class Uploader(object):
             body={
                 "snippet": {
                     "title": title,
-                    "description": "Bolides captured by Israeli Meteor Network "
+                    "description": "Captured by Israeli Meteor Network "
                                    "station {}.".format(station),
                 },
                 "status": {"privacyStatus": self.playlist_privacy},
@@ -324,9 +384,28 @@ def authorize():
         "refresh_token": creds.refresh_token,
     })
     existing.setdefault("privacy", "unlisted")
-    # Playlist ids belong to whichever channel was authorized; a re-auth may
-    # have picked a different one, so the cache cannot carry over.
-    existing.pop("playlists", None)
+
+    # Playlist ids belong to whichever channel was authorized, so a re-auth that
+    # picked a different one must not carry the cache over. Ask which channel
+    # this is (1 unit, and only here in the one-time flow) rather than dropping
+    # the cache unconditionally: re-consenting to the SAME channel is the common
+    # case, and with playlists split by period there are hundreds of ids in
+    # there that would otherwise cost a full cold scan to rediscover.
+    channel_id = None
+    try:
+        from googleapiclient.discovery import build
+        channels = build("youtube", "v3", credentials=creds, cache_discovery=False) \
+            .channels().list(part="id", mine=True).execute()
+        items = channels.get("items", [])
+        if items:
+            channel_id = items[0]["id"]
+    except Exception as e:
+        log.warning("could not identify the authorized channel (%r)", e)
+
+    if channel_id is None or existing.get("channel_id") != channel_id:
+        existing.pop("playlists", None)
+    if channel_id:
+        existing["channel_id"] = channel_id
 
     if not os.path.isdir(_CONFIG_DIR):
         os.makedirs(_CONFIG_DIR)
