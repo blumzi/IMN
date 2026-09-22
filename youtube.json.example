@@ -3,6 +3,9 @@
   "client_id": "REPLACE.apps.googleusercontent.com",
   "client_secret": "REPLACE",
   "refresh_token": "REPLACE",
-  "playlist_id": "PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "_comment_playlists": "Playlist titles are templates. {station} plus, from the capture night, {night} {month} {year}; track stacks also get {shower}. Omit these two keys entirely to keep the old single flat playlist per station. A fixed playlist_id, if you add one, overrides both.",
+  "playlist_title": "IMN/{station}/{month}",
+  "trackstack_playlist_title": "IMN/{station}/{shower}-{year}",
+  "playlist_privacy": "public",
   "privacy": "unlisted"
 }

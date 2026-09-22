@@ -496,6 +496,39 @@ def render_bolide(archived_dir, bolide, config, staging_root):
     return paths
 
 
+def night_of(archived_dir):
+    """ The night's date as YYYYMMDD, from the archive directory name.
+
+        RMS names these <STATION>_<YYYYMMDD>_<HHMMSS>_<us>, so the date is the
+        second field. Returns None if the name does not look like that.
+
+        This is RMS's night, not the UTC date of any one frame: a bolide at
+        01:30 UTC on Oct 1 was captured during the night of Sep 30 and archived
+        under it, alongside the rest of that night's products. Anything filing
+        by period has to agree with that, and none of it may use today's date --
+        the nightly hook runs after dawn, so a night captured on the 31st is
+        published on the 1st.
+    """
+    parts = os.path.basename(archived_dir.rstrip(os.sep)).split("_")
+    if len(parts) > 1 and len(parts[1]) == 8 and parts[1].isdigit():
+        return parts[1]
+    log.warning("cannot read a night date from %s", archived_dir)
+    return None
+
+
+def playlist_keys(night):
+    """ The period fields a playlist title template may use, from a YYYYMMDD
+        night. Months and days are zero-padded by construction, so the titles
+        built from them sort lexicographically. """
+    if not night:
+        return {}
+    return {
+        "night": "{}-{}-{}".format(night[:4], night[4:6], night[6:8]),
+        "month": "{}-{}".format(night[:4], night[4:6]),
+        "year": night[:4],
+    }
+
+
 def _station_for(archived_dir, config):
     """ Return the station code this night belongs to.
 
@@ -572,6 +605,7 @@ def publish_bolides(archived_dir, config, n=DEFAULT_N,
         return []
 
     station = _station_for(archived_dir, config)
+    keys = playlist_keys(night_of(archived_dir))
 
     staging_root = os.path.join(archived_dir, STAGING_SUBDIR)
     if not os.path.isdir(staging_root):
@@ -594,7 +628,8 @@ def publish_bolides(archived_dir, config, n=DEFAULT_N,
         for video_path in bolide.video_paths:
             try:
                 video_id = uploader.upload_video(video_path, title, description,
-                                                 station=station)
+                                                 station=station, kind="bolide",
+                                                 playlist_keys=keys)
                 bolide.video_ids.append(video_id)
                 log.info("uploaded %s -> https://youtu.be/%s", video_path, video_id)
             except Exception as e:

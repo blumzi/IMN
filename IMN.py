@@ -59,10 +59,6 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 	# crash here stops the station rebooting for good.
 	try:
 
-		# Run the IMN shell script
-		script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "IMN.sh")
-		run_script([script_path, "{:s}".format(captured_night_dir), "{:s}".format(archived_night_dir)])
-
 		# Run the iStream shell script (iStream lives under the RMS root; locate it
 		# via config.rms_root_dir so this works whether IMN is under RMS or a sibling)
 		script_path = os.path.join(config.rms_root_dir, "iStream", "iStream.sh")
