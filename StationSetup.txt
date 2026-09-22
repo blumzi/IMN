@@ -20,7 +20,7 @@
 
 6. Set up IMN transfer
 	- mkdir ~/source/RMS/IMN
-	- Copy IMN.sh and IMN.py from halifax:Documents/Work/IMN to ~/source/RMS/IMN
+	- Copy IMN.py from halifax:Documents/Work/IMN to ~/source/RMS/IMN
 	- Change the external_script_path line in .config to:
 
 		external_script_path: /home/pi/source/RMS/IMN/IMN.py
