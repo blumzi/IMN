@@ -58,9 +58,7 @@ Fleet (stations: IL0001, IL0002, IL0003, IL0008, IL0009; reached by bare lowerca
 ./imn --update [station ...]   # git pull + deps + push youtube.json/config.toml
 ```
 
-`imn` needs `sshpass`, which Windows lacks. There, use `.claude/fleet_ssh.py` (paramiko, dev-only — `uv pip install paramiko`): `python .claude/fleet_ssh.py "<command>" [station ...]`. It reads the same stations table, plus an optional fourth TAB field holding the password, falling back to `$IMN_SSH_PASSWORD`.
-
-`.claude/copy_youtube_json.py <from> <to> [...]` copies `~/.config/IMN/youtube.json` station to station (0600, checksum-verified, never printed) — for stations where `imn` has no local copy to push. Moving credentials is gated by the auto-mode classifier, so the user may have to run it themselves.
+`imn` is the one way to reach the fleet; it needs `sshpass`. `--init`/`--update` push `youtube.json` from the local `~/.config/IMN`, so that file must exist where `imn` runs.
 
 ### Fleet status (as of 2026-10-06)
 
@@ -81,4 +79,4 @@ On a station, IMN lives at `~/source/IMN` (sibling of `~/source/RMS`); logs are 
 - `plans/` holds design docs with a Status header (Implemented / Draft / Shelved). Write one for non-trivial features; they record *why*, which the code comments then reference.
 - `Config` is a sample station RMS config (IL0003); `StationSetup.txt` is the manual station bring-up checklist (its IMN step predates `imn --init`).
 - Work goes through feature branches and PRs into `main`.
-- **Claude's own files live in `.claude/` and are tracked** — this file, helper scripts, settings. Put lasting project notes here rather than in Claude Code's private auto-memory. The repo is on GitHub: no passwords, tokens or VPN addresses (those stay in `~/.config/IMN`).
+- **Claude's own files live in `.claude/` and are tracked** — this file and settings. Put lasting project notes here rather than in Claude Code's private auto-memory. The repo is on GitHub: no passwords, tokens or VPN addresses (those stay in `~/.config/IMN`).
