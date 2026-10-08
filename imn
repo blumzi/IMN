@@ -5,11 +5,11 @@
 # Stations are read from ~/.config/IMN/stations (override with $IMN_STATIONS):
 # a TAB separated table of
 #
-#     <ip>	<station>	<user>
+#     <ip>	<station>	<user>	<password>
 #
-# Blank lines and lines starting with # are ignored. The station's ssh password
-# is its station name, i.e. the second field. That file therefore holds
-# credentials -- keep it out of the repo and chmod 600.
+# Blank lines and lines starting with # are ignored. The fourth field is the
+# user's ssh password, so that file holds credentials -- keep it out of the repo
+# and chmod 600.
 #
 # Usage:
 #     imn --test   [station ...]   pwd + ls on each station, to check reachability
@@ -35,6 +35,14 @@
 # number of stations that failed.
 
 set -uo pipefail
+
+# Called back by ssh as its SSH_ASKPASS helper: answer the prompt with the
+# password run_remote put in the environment, and do nothing else.
+if [ -n "${IMN_ASKPASS_MODE:-}" ]; then
+    printf '%s
+' "${SSHPASS}"
+    exit 0
+fi
 
 readonly PROGNAME=${0##*/}
 readonly CONFIG_DIR=${HOME}/.config/IMN
@@ -69,6 +77,18 @@ readonly SSH_OPTS=(
     -o ConnectTimeout=5
     -o LogLevel=ERROR
 )
+
+# On Windows the only sshpass is the sshpass-win32 port, which types the password
+# through a Windows console: it only works with Windows' own ssh.exe, and that
+# console garbles multi-line commands and binary output (fetch_log's gzip). So
+# there ssh gets the password from SSH_ASKPASS instead, with this script as the
+# helper (see ASKPASS_MODE below) -- needs OpenSSH 8.4+, which Git Bash has.
+case "$(uname -s)" in
+MINGW*|MSYS*|CYGWIN*) USE_ASKPASS=yes ;;
+*)                    USE_ASKPASS= ;;
+esac
+readonly USE_ASKPASS
+readonly SELF="$(cd "$(dirname "$0")" && pwd)/${0##*/}"
 
 
 usage() {
@@ -208,9 +228,13 @@ EOF
 # Run one command on a station. The password goes through the environment, never
 # argv, so it does not show up in ps output on this machine.
 run_remote() {
-    local ip=$1 station=$2 user=$3 command=$4
+    local ip=$1 station=$2 user=$3 password=$4 command=$5
 
-    SSHPASS="${station}" sshpass -e ssh "${SSH_OPTS[@]}" "${user}@${ip}" "${command}"
+    if [ -n "${USE_ASKPASS}" ]; then
+        SSHPASS="${password}" IMN_ASKPASS_MODE=yes             SSH_ASKPASS="${SELF}" SSH_ASKPASS_REQUIRE=force             ssh "${SSH_OPTS[@]}" "${user}@${ip}" "${command}"
+    else
+        SSHPASS="${password}" sshpass -e ssh "${SSH_OPTS[@]}" "${user}@${ip}" "${command}"
+    fi
 }
 
 
@@ -228,7 +252,7 @@ is_optional_config() {
 # than scp'd so the file lands with 0600 in the same step -- these are
 # credentials and must never sit world readable, however briefly.
 copy_config() {
-    local ip=$1 station=$2 user=$3
+    local ip=$1 station=$2 user=$3 password=$4
     local file path failed=0
 
     for file in "${CONFIG_FILES[@]}"; do
@@ -244,7 +268,7 @@ copy_config() {
             continue
         fi
 
-        if run_remote "${ip}" "${station}" "${user}" \
+        if run_remote "${ip}" "${station}" "${user}" "${password}" \
             "mkdir -p ~/.config/IMN && umask 077 && cat > ~/.config/IMN/${file}" \
             < "${path}"
         then
@@ -268,10 +292,10 @@ copy_config() {
 #
 # Logs run to ~9MB, so it comes back gzipped over the wire.
 fetch_log() {
-    local ip=$1 station=$2 user=$3
+    local ip=$1 station=$2 user=$3 password=$4
     local remote_log
 
-    remote_log=$(run_remote "${ip}" "${station}" "${user}" '
+    remote_log=$(run_remote "${ip}" "${station}" "${user}" "${password}" '
         for f in $(ls -t ~/RMS_data/logs/log_*.log 2>/dev/null | head -5); do
             if grep -q "Starting function" "$f"; then echo "$f"; exit 0; fi
         done
@@ -286,7 +310,7 @@ fetch_log() {
     mkdir -p "${LOG_DIR}"
     local local_log="${LOG_DIR}/${station}_${remote_log##*/}"
 
-    run_remote "${ip}" "${station}" "${user}" "gzip -c '${remote_log}'" </dev/null \
+    run_remote "${ip}" "${station}" "${user}" "${password}" "gzip -c '${remote_log}'" </dev/null \
         | gunzip > "${local_log}" || return 1
 
     echo "${remote_log} -> ${local_log} ($(wc -c <"${local_log}" | tr -d ' ') bytes)"
@@ -306,22 +330,22 @@ fetch_log() {
 # Visit one station: the mode's command, plus the config files for the modes
 # that deploy. --test only looks around, so it sends nothing.
 run_on_station() {
-    local ip=$1 station=$2 user=$3 user_command=$4 mode=$5
+    local ip=$1 station=$2 user=$3 password=$4 user_command=$5 mode=$6
     local status=0
 
     echo "=== ${station} (${user}@${ip}) ==="
 
     if [ "${mode}" = log ]; then
-        fetch_log "${ip}" "${station}" "${user}"
+        fetch_log "${ip}" "${station}" "${user}" "${password}"
         return
     fi
 
     if [ "${mode}" != test ]; then
-        copy_config "${ip}" "${station}" "${user}" || status=1
+        copy_config "${ip}" "${station}" "${user}" "${password}" || status=1
     fi
 
     # </dev/null so the remote command cannot swallow the caller's stdin.
-    run_remote "${ip}" "${station}" "${user}" "${user_command}" </dev/null || status=1
+    run_remote "${ip}" "${station}" "${user}" "${password}" "${user_command}" </dev/null || status=1
 
     return "${status}"
 }
@@ -345,7 +369,8 @@ main() {
 
     [ -n "${mode}" ] || die "one of --test, --log, --init or --update is required"
     [ -r "${STATIONS_FILE}" ] || die "cannot read ${STATIONS_FILE}"
-    command -v sshpass >/dev/null || die "sshpass is not installed"
+    [ -n "${USE_ASKPASS}" ] || command -v sshpass >/dev/null ||
+        die "sshpass is not installed"
 
     local wanted=("$@")
     local command failures=0 visited=0
@@ -353,10 +378,10 @@ main() {
 
     # The table is read on fd 3, not stdin: ssh drains its stdin, so a loop fed
     # from stdin would lose every station after the first.
-    local ip station user
-    while IFS=$'\t' read -r -u 3 ip station user _; do
+    local ip station user password
+    while IFS=$'\t' read -r -u 3 ip station user password _; do
 
-        [ -n "${ip}" ] && [ -n "${station}" ] && [ -n "${user}" ] || {
+        [ -n "${ip}" ] && [ -n "${station}" ] && [ -n "${user}" ] && [ -n "${password}" ] || {
             echo "${PROGNAME}: ignoring malformed line: ${ip}" >&2
             continue
         }
@@ -370,7 +395,7 @@ main() {
         fi
 
         (( visited++ ))
-        run_on_station "${ip}" "${station}" "${user}" "${command}" "${mode}" || {
+        run_on_station "${ip}" "${station}" "${user}" "${password}" "${command}" "${mode}" || {
             echo "${PROGNAME}: ${station} failed (exit $?)" >&2
             (( failures++ ))
         }
