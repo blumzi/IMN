@@ -25,7 +25,7 @@ Everything in the nightly hook must be failure-tolerant: `rmsExternal` holds RMS
 - `trackstacks.py` + `trackstack_runner.py` — a shower is "active" when this station associated ≥ `min_meteors` to it last night (no calendar). Stack that shower's FFs (subprocess, wall-clock timeout, nightly budget), archive the JPEG under `~/imn/stacks` (outside `RMS_data`, which RMS reaps), rebuild the cumulative video with ffmpeg, publish, and retire older generations one cycle late. State lives in `~/imn/trackstacks.json`, saved before anything is retired.
 - `youtube.py` — Data API v3 uploader. Playlist titles are templates (`IMN/{station}/{month}`, `IMN/{station}/{shower}-{year}`, per-kind via `<kind>_playlist_title`); playlist ids are cached in `youtube.json`. The daily quota is small, so avoid `search.list` and persist ids you'll need later.
 - `imnconfig.py` — tunables from `~/.config/IMN/config.toml` (`$IMN_CONFIG`). Every key needs an entry in `DEFAULTS`; bad files/keys/types log and fall back. Named `imnconfig` because RMS puts this directory first on `sys.path`, so a `config.py` would shadow other modules.
-- `imn` — bash fleet runner (`--test`, `--log`, `--init`, `--update`) over ssh with `sshpass`.
+- `imn` — bash fleet runner (`--test`, `--log`, `--init`, `--update`) over ssh; passwords come from the 4th column of the `stations` file.
 
 Conventions that span files:
 - **Dates come from the capture night** (the `<STATION>_<YYYYMMDD>_...` archive dir name via `bolides.night_of`), never from today — the hook runs after dawn.
@@ -58,7 +58,7 @@ Fleet (stations: IL0001, IL0002, IL0003, IL0008, IL0009; reached by bare lowerca
 ./imn --update [station ...]   # git pull + deps + push youtube.json/config.toml
 ```
 
-`imn` is the one way to reach the fleet; it needs `sshpass`. `--init`/`--update` push `youtube.json` from the local `~/.config/IMN`, so that file must exist where `imn` runs.
+`imn` is the one way to reach the fleet; it needs `sshpass` on Linux/macOS. Under Git Bash on Windows it uses `SSH_ASKPASS` instead (with itself as the helper), because the `sshpass-win32` port only works with Windows' `ssh.exe`, whose console mangles multi-line commands and binary output. `--init`/`--update` push `youtube.json` from the local `~/.config/IMN`, so that file must exist where `imn` runs.
 
 ### Fleet status (as of 2026-10-06)
 
