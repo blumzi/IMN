@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The Israeli Meteor Network (IMN) station add-on for [RMS](https://github.com/CroatianMeteorNetwork/RMS). RMS runs on each station's Raspberry Pi; at the end of every night it calls `IMN.py:rmsExternal()` (configured by `external_script_path` / `external_function_name` in the station's RMS `.config`). From there IMN publishes the night's best bolides — and, when enabled, cumulative shower track-stack videos — to the association's YouTube channel.
 
-There is no build, lint config or test suite. Changes are verified by running the scripts against a real archived night (see Commands), and ultimately on a station.
+There is no build or test suite. Changes are verified by running the scripts against a real archived night (see Commands), and ultimately on a station. Code is kept clean under ruff (`ruff.toml`, pinned to Python 3.7): run it before every commit and fix what it reports rather than adding ignores. A `# noqa` needs a reason beside it, and a rule is disabled in `ruff.toml` only with a comment saying why.
 
 ## Target environment — the binding constraint
 
@@ -38,6 +38,13 @@ Local dev venv (`.venv`, managed with uv):
 
 ```
 uv pip install -r requirements-bolides.txt
+```
+
+Lint (ruff is not a project dependency; `uvx` fetches it):
+
+```
+uvx ruff check .          # must pass before committing
+uvx ruff check --fix .    # safe auto-fixes; review the diff
 ```
 
 Bolide pipeline against an archived night (needs an RMS checkout on `PYTHONPATH` and its `.config`):

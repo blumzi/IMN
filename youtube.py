@@ -50,9 +50,9 @@
     google-auth-oauthlib  (see requirements-bolides.txt).
 """
 
-import os
 import json
 import logging
+import os
 
 log = logging.getLogger("IMN.youtube")
 
@@ -94,7 +94,7 @@ def _save_config(cfg):
             json.dump(cfg, f, indent=2)
         os.chmod(tmp, 0o600)
         os.rename(tmp, _CONFIG_PATH)
-    except (IOError, OSError) as e:
+    except OSError as e:
         log.warning("could not update %s: %r", _CONFIG_PATH, e)
         try:
             os.remove(tmp)
@@ -102,7 +102,7 @@ def _save_config(cfg):
             pass
 
 
-class Uploader(object):
+class Uploader:
     """ Thin wrapper over the YouTube Data API v3 for uploading a video and
         (optionally) adding it to a playlist. """
 
@@ -200,7 +200,7 @@ class Uploader(object):
             one. A per-kind key exists because the natural period differs: a
             bolide belongs to a month, a track stack to a shower and a year. """
         if kind:
-            template = self.cfg.get("{}_playlist_title".format(kind))
+            template = self.cfg.get(f"{kind}_playlist_title")
             if template:
                 return template
         return self.playlist_title
@@ -272,7 +272,7 @@ class Uploader(object):
                 "snippet": {
                     "title": title,
                     "description": "Captured by Israeli Meteor Network "
-                                   "station {}.".format(station),
+                                   f"station {station}.",
                 },
                 "status": {"privacyStatus": self.playlist_privacy},
             },
@@ -348,7 +348,7 @@ def authorize():
     from google_auth_oauthlib.flow import InstalledAppFlow
 
     if not os.path.isfile(_CLIENT_SECRET_PATH):
-        raise SystemExit("Place your OAuth client secret at {}".format(_CLIENT_SECRET_PATH))
+        raise SystemExit(f"Place your OAuth client secret at {_CLIENT_SECRET_PATH}")
 
     flow = InstalledAppFlow.from_client_secrets_file(_CLIENT_SECRET_PATH, SCOPES)
     # There is no headless fallback: Google blocked the out-of-band
@@ -368,14 +368,14 @@ def authorize():
         # were asked for -- i.e. a consent checkbox was left unticked. Uploading
         # needs youtube.upload; the playlists need the broader youtube scope.
         raise SystemExit(
-            "{}\n\nTick *both* permission checkboxes on the consent screen "
-            "(the second one covers playlist management) and retry.".format(e))
+            f"{e}\n\nTick *both* permission checkboxes on the consent screen "
+            "(the second one covers playlist management) and retry.")
 
     if not creds.refresh_token:
         raise SystemExit(
-            "Google returned no refresh token; {} left unchanged. Revoke this "
+            f"Google returned no refresh token; {_CONFIG_PATH} left unchanged. Revoke this "
             "app at https://myaccount.google.com/permissions and retry."
-            .format(_CONFIG_PATH))
+            )
 
     existing = _load_config() or {}
     existing.update({
@@ -412,7 +412,7 @@ def authorize():
     with open(_CONFIG_PATH, "w") as f:
         json.dump(existing, f, indent=2)
     os.chmod(_CONFIG_PATH, 0o600)
-    print("Wrote {} (add a 'playlist_id' to publish into a playlist).".format(_CONFIG_PATH))
+    print(f"Wrote {_CONFIG_PATH} (add a 'playlist_id' to publish into a playlist).")
 
 
 if __name__ == "__main__":

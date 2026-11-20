@@ -24,11 +24,9 @@
         trackstack_runner.py <stage_dir> <out_path> --rms-root DIR [--caption S]
 """
 
-from __future__ import print_function
-
+import argparse
 import os
 import sys
-import argparse
 
 
 def main():
@@ -44,8 +42,8 @@ def main():
     sys.path.insert(0, args.rms_root)
     os.chdir(args.rms_root)
 
-    import numpy as np
     import cv2
+    import numpy as np
     import Utils.TrackStack as TS
     from RMS.ConfigReader import loadConfigFromDirectory
 
@@ -86,10 +84,10 @@ def main():
         os.makedirs(out_dir)
 
     if not cv2.imwrite(args.out_path, image):
-        print("trackstack_runner: could not write %s" % args.out_path, file=sys.stderr)
+        print(f"trackstack_runner: could not write {args.out_path}", file=sys.stderr)
         return 1
 
-    print("trackstack_runner: wrote %s %s" % (args.out_path, image.shape))
+    print(f"trackstack_runner: wrote {args.out_path} {image.shape}")
     return 0
 
 

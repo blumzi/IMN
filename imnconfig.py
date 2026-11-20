@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 """ Tunable parameters for the IMN station scripts.
 
     Values live in ~/.config/IMN/config.toml (override with $IMN_CONFIG),
@@ -29,8 +27,8 @@
     module for the whole process.
 """
 
-import os
 import logging
+import os
 
 log = logging.getLogger("IMN.config")
 
@@ -69,21 +67,21 @@ def _read_toml(path):
         hence the chain. Returns None if nothing can parse it.
     """
     try:
-        import tomllib                                  # Python 3.11+
+        import tomllib  # Python 3.11+
         with open(path, "rb") as f:
             return tomllib.load(f)
     except ImportError:
         pass
 
     try:
-        import tomli                                    # backport, 3.7 via 1.2.x
+        import tomli  # backport, 3.7 via 1.2.x
         with open(path, "rb") as f:
             return tomli.load(f)
     except ImportError:
         pass
 
     try:
-        import toml                                     # older third party
+        import toml  # older third party
         with open(path) as f:
             return toml.load(f)
     except ImportError:

@@ -1,10 +1,9 @@
-#!/usr/bin/python
-
-import os
+import datetime
 import getpass
 import logging
-import datetime
+import os
 import subprocess
+
 from RMS.CaptureDuration import captureDuration
 
 import bolides
@@ -40,9 +39,11 @@ def run_script(argv):
 def rmsExternal(captured_night_dir, archived_night_dir, config):
 
 	# Compute the capture duration from now
-	start_time, duration = captureDuration(config.latitude, config.longitude, config.elevation)
+	start_time, _duration = captureDuration(config.latitude, config.longitude, config.elevation)
 
-	timenow = datetime.datetime.utcnow()
+	# Naive UTC on purpose: RMS's captureDuration returns a naive UTC datetime,
+	# and subtracting a timezone-aware "now" from it would raise TypeError.
+	timenow = datetime.datetime.utcnow()  # noqa: DTZ003
 	remaining_seconds = 0
 
 	# Compute how long to wait before capture
@@ -62,11 +63,11 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 		# Run the iStream shell script (iStream lives under the RMS root; locate it
 		# via config.rms_root_dir so this works whether IMN is under RMS or a sibling)
 		script_path = os.path.join(config.rms_root_dir, "iStream", "iStream.sh")
-		run_script([script_path, "{:s}".format(config.stationID), \
-			"{:s}".format(captured_night_dir), "{:s}".format(archived_night_dir), \
-			"{:.6f}".format(config.latitude), "{:.6f}".format(config.longitude), \
-			"{:.1f}".format(config.elevation), "{:d}".format(config.width), \
-			"{:d}".format(config.height), "{:d}".format(remaining_seconds)])
+		run_script([script_path, f"{config.stationID:s}", \
+			f"{captured_night_dir:s}", f"{archived_night_dir:s}", \
+			f"{config.latitude:.6f}", f"{config.longitude:.6f}", \
+			f"{config.elevation:.1f}", f"{config.width:d}", \
+			f"{config.height:d}", f"{remaining_seconds:d}"])
 
 		# Select and publish the night's best bolides. Guarded so that any failure
 		# (bad data, network, missing YouTube credentials) cannot break the RMS

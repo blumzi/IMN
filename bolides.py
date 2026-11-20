@@ -33,13 +33,13 @@
     stops short of publishing them.
 """
 
-import os
-import sys
 import glob
 import json
-import struct
 import logging
+import os
+import struct
 import subprocess
+import sys
 
 import imnconfig
 
@@ -70,10 +70,10 @@ HOLD_SECONDS = imnconfig.get("bolides", "hold_seconds")
 
 def _is_num(v):
     """ True for a real (non-NaN) number. NaN != NaN, so this filters NaNs. """
-    return v is not None and v == v
+    return v is not None and v == v  # noqa: PLR0124 -- the NaN test itself
 
 
-class Bolide(object):
+class Bolide:
     """ One selected bolide and its computed selection metrics. """
 
     def __init__(self, ff_name, peak_mag, sat_fraction, has_sat, trail_deg):
@@ -218,7 +218,7 @@ def _render_with_frbinviewer(archived_dir, bolide, config, staging_root):
     return sorted(glob.glob(os.path.join(stage, "*.mp4")))
 
 
-class _FR(object):
+class _FR:
     """ The fields of RMS's fr_struct that the renderer needs. """
 
     def __init__(self):
@@ -347,7 +347,7 @@ def _encode_mp4(frames, mp4_path, fps, ffmpeg_binary):
     if ffmpeg_binary:
         cmd = [ffmpeg_binary, "-y", "-hide_banner", "-loglevel", "error",
                "-f", "rawvideo", "-pix_fmt", "gray",
-               "-s", "{}x{}".format(width, height), "-framerate", str(fps),
+               "-s", f"{width}x{height}", "-framerate", str(fps),
                "-i", "-", "-c:v", "libx264", "-pix_fmt", "yuv420p", mp4_path]
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
         for img in frames:
@@ -434,12 +434,11 @@ def _retime(mp4_path, config, slowdown=SLOWDOWN, hold=HOLD_SECONDS):
     if frames:
         # Each held frame lasts slowdown/fps seconds once setpts has stretched
         # the timeline, so this many of them cover the requested hold.
-        repeats = max(1, int(round(hold * config.fps / float(slowdown))))
-        vf = "loop=loop={:d}:size=1:start={:d},setpts={:.3f}*PTS".format(
-            repeats, frames - 1, slowdown)
+        repeats = max(1, round(hold * config.fps / float(slowdown)))
+        vf = f"loop=loop={repeats:d}:size=1:start={frames - 1:d},setpts={slowdown:.3f}*PTS"
     else:
         log.warning("could not count frames in %s; slowing without a hold", mp4_path)
-        vf = "setpts={:.3f}*PTS".format(slowdown)
+        vf = f"setpts={slowdown:.3f}*PTS"
 
     cmd = [ffmpeg_binary, "-y", "-hide_banner", "-loglevel", "error",
            "-i", mp4_path, "-filter:v", vf,
@@ -523,8 +522,8 @@ def playlist_keys(night):
     if not night:
         return {}
     return {
-        "night": "{}-{}-{}".format(night[:4], night[4:6], night[6:8]),
-        "month": "{}-{}".format(night[:4], night[4:6]),
+        "night": f"{night[:4]}-{night[4:6]}-{night[6:8]}",
+        "month": f"{night[:4]}-{night[4:6]}",
         "year": night[:4],
     }
 
@@ -575,15 +574,14 @@ def _title_and_description(bolide, config, station):
     except Exception:
         when = bolide.ff_name
 
-    title = "Bolide {} {}".format(station, when)
+    title = f"Bolide {station} {when}"
     description = (
-        "Bolide captured by Israeli Meteor Network station {}.\n"
-        "Time: {}\n"
-        "Peak apparent magnitude: {:.1f}\n"
-        "Angular trail length: {:.2f} deg\n"
-        "Location: {:.5f} N, {:.5f} E, {:.1f} m\n"
-    ).format(station, when, bolide.peak_mag, bolide.trail_deg,
-             config.latitude, config.longitude, config.elevation)
+        f"Bolide captured by Israeli Meteor Network station {station}.\n"
+        f"Time: {when}\n"
+        f"Peak apparent magnitude: {bolide.peak_mag:.1f}\n"
+        f"Angular trail length: {bolide.trail_deg:.2f} deg\n"
+        f"Location: {config.latitude:.5f} N, {config.longitude:.5f} E, {config.elevation:.1f} m\n"
+    )
     return title, description
 
 
@@ -666,9 +664,8 @@ def _standalone():
 
     if args.dry_run:
         for i, b in enumerate(select_bolides(args.archived_dir, args.mag, args.n), 1):
-            sat = "n/a" if b.sat_fraction is None else "{:.2f}".format(b.sat_fraction)
-            print("{}. {}  peak_mag={:.1f}  sat_frac={}  trail={:.2f}deg".format(
-                i, b.ff_name, b.peak_mag, sat, b.trail_deg))
+            sat = "n/a" if b.sat_fraction is None else f"{b.sat_fraction:.2f}"
+            print(f"{i}. {b.ff_name}  peak_mag={b.peak_mag:.1f}  sat_frac={sat}  trail={b.trail_deg:.2f}deg")
         return
 
     from RMS.ConfigReader import loadConfigFromDirectory

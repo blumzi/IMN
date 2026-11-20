@@ -1,0 +1,13 @@
+# Lint config for IMN. Run with:  uvx ruff check .
+#
+# The code runs on the stations' Python 3.7 (see .claude/CLAUDE.md), so ruff
+# must never suggest syntax or APIs newer than that.
+target-version = "py37"
+
+[lint]
+ignore = [
+    # Blind `except Exception` is deliberate: everything in the nightly hook
+    # must swallow its own failures, because rmsExternal holds RMS's reboot
+    # lock and an escaping exception can stop a station rebooting.
+    "BLE001",
+]
