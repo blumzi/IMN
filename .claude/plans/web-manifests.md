@@ -16,7 +16,7 @@ Nothing here is wrong, and none of it depends on FTP specifically — it needs *
 place to put a few kilobytes of JSON per station per night. It is written down so
 that if a host appears, the design does not have to be rediscovered. The
 period-split playlists it was paired with did not need a transport and shipped
-separately: see `plans/playlist-periods.md`.
+separately: see `.claude/plans/playlist-periods.md`.
 
 **The blocker is one question: where do the files go?** Candidates considered:
 

@@ -76,7 +76,7 @@ On a station, IMN lives at `~/source/IMN` (sibling of `~/source/RMS`); logs are 
 
 ## Repo notes
 
-- `plans/` holds design docs with a Status header (Implemented / Draft / Shelved). Write one for non-trivial features; they record *why*, which the code comments then reference.
+- `.claude/plans/` holds design docs with a Status header (Implemented / Draft / Shelved). Write one for non-trivial features; they record *why*, which the code comments then reference.
 - `Config` is a sample station RMS config (IL0003); `StationSetup.txt` is the manual station bring-up checklist (its IMN step predates `imn --init`).
 - Work goes through feature branches and PRs into `main`.
 - **Claude's own files live in `.claude/` and are tracked** — this file and settings. Put lasting project notes here rather than in Claude Code's private auto-memory. The repo is on GitHub: no passwords, tokens or VPN addresses (those stay in `~/.config/IMN`).
