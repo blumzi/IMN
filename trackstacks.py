@@ -6,7 +6,7 @@
     association's YouTube channel, showing its track-stacked frames for every
     night of the shower so far. It is rebuilt and republished each morning.
 
-    Design and rationale: plans/shower-trackstack-video.md. In short:
+    Design and rationale: .claude/plans/shower-trackstack-video.md. In short:
 
       1. A shower is active if THIS station associated at least min_meteors to
          it last night. Nothing reads a calendar; the station's own detections

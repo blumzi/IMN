@@ -125,7 +125,7 @@ at the end, so "delete from position 0 until the length is N" is enough.
 
 Left out because it costs 50 units a video plus 50 a trim against a budget that is
 already the binding constraint, and because the web page was to have covered the
-same need for free — see `plans/web-manifests.md`, now shelved.
+same need for free — see `.claude/plans/web-manifests.md`, now shelved.
 
 ## Operational notes
 

@@ -22,7 +22,7 @@ upload to `ftp://ftp.astronomy.org.il/IMN/radiants/<camera>/`, was deleted
 along with its call site in `IMN.py`. Consequence: **there is now no path
 off a station except the YouTube API.** Anything that wants to publish
 data (e.g. JSON manifests for a web page) needs a new transport chosen
-first — that is what shelved `plans/web-manifests.md`. Candidates weighed:
+first — that is what shelved `.claude/plans/web-manifests.md`. Candidates weighed:
 a repo with GitHub Pages (stations already have a git checkout and
 `imn --update` already pulls), an HTTP endpoint the association would have
 to stand up, or no station-side publishing at all with the page reading
