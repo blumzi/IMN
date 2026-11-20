@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 """ Per-station cumulative shower track-stack videos.
 
     During a shower, each station keeps ONE cumulative video per shower on the
@@ -26,14 +24,14 @@
     Off unless [trackstack] enabled = true in config.toml.
 """
 
-import os
-import json
 import glob
-import time
-import shutil
+import json
 import logging
-import tempfile
+import os
+import shutil
 import subprocess
+import tempfile
+import time
 
 import imnconfig
 
@@ -54,8 +52,8 @@ def analyse_night(archived_dir, config):
         The FF mapping is why we do the association ourselves rather than
         letting TrackStack filter: see _stage_shower().
     """
-    from Utils.ShowerAssociation import showerAssociation
     from RMS.Formats.FTPdetectinfo import findFTPdetectinfoFile
+    from Utils.ShowerAssociation import showerAssociation
 
     ftp_path = findFTPdetectinfoFile(archived_dir)
     if not ftp_path:
@@ -77,7 +75,7 @@ def analyse_night(archived_dir, config):
 
     if len(ranked) > 0:
         log.info("active showers in %s: %s", archived_dir,
-                ", ".join("{}({})".format(c, n) for c, n in ranked))
+                ", ".join(f"{c}({n})" for c, n in ranked))
     else:
         log.info(f"no active showers in {archived_dir} with at least {minimum} meteors")
 
@@ -232,7 +230,7 @@ def archive_stack(image_path, station, code, night):
     if not os.path.isdir(dest_dir):
         os.makedirs(dest_dir)
 
-    dest = os.path.join(dest_dir, "{}_{}_{}.jpg".format(station, night, code))
+    dest = os.path.join(dest_dir, f"{station}_{night}_{code}.jpg")
     shutil.copy2(image_path, dest)
     log.info("archived %s", dest)
     return dest
@@ -241,7 +239,7 @@ def archive_stack(image_path, station, code, night):
 def stack_paths(station, code, year):
     """ Every archived stack for one station/shower/year, chronologically. """
     pattern = os.path.join(_path("stacks_dir"), year, code,
-                           "{}_*_{}.jpg".format(station, code))
+                           f"{station}_*_{code}.jpg")
     return sorted(glob.glob(pattern))
 
 
@@ -264,8 +262,8 @@ def build_video(station, code, year, out_path):
     # image needs repeating -- the demuxer ignores the final duration.
     listing = []
     for image in images:
-        listing.append("file '{}'\nduration {}".format(image, seconds))
-    listing.append("file '{}'".format(images[-1]))
+        listing.append(f"file '{image}'\nduration {seconds}")
+    listing.append(f"file '{images[-1]}'")
 
     handle, list_path = tempfile.mkstemp(suffix=".txt")
     with os.fdopen(handle, "w") as f:
@@ -274,8 +272,8 @@ def build_video(station, code, year, out_path):
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
            "-f", "concat", "-safe", "0", "-i", list_path,
            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30",
-           "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,"
-                  "pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+           "-vf", ("scale=1920:1080:force_original_aspect_ratio=decrease,"
+                   "pad=1920:1080:(ow-iw)/2:(oh-ih)/2"),
            out_path]
 
     try:
@@ -320,7 +318,7 @@ def save_state(state):
 
 
 def state_key(station, code, year):
-    return "{}/{}/{}".format(station, code, year)
+    return f"{station}/{code}/{year}"
 
 
 # ------------------------------------------------------------- orchestration
@@ -337,11 +335,11 @@ def _title(station, code, year, images, meteors):
 
 def _description(station, code, year, images, meteors):
     return (
-        "Cumulative track stack of {} meteors from the {} shower, {}, "
-        "captured by Israeli Meteor Network station {}.\n"
-        "One frame per night, {} night(s) so far.\n"
+        f"Cumulative track stack of {meteors} meteors from the {code} shower, {year}, "
+        f"captured by Israeli Meteor Network station {station}.\n"
+        f"One frame per night, {len(images)} night(s) so far.\n"
         "Rebuilt each morning for as long as the shower stays active."
-    ).format(meteors, code, year, station, len(images))
+    )
 
 
 def _retire_old(uploader, entry, keep):
@@ -394,8 +392,7 @@ def publish_shower_stacks(archived_dir, config, no_upload=False):
                 break
 
             started = time.time()
-            caption = "{}  {}-{}-{}  {}: {} meteors".format(
-                station, night[:4], night[4:6], night[6:8], code, count)
+            caption = f"{station}  {night[:4]}-{night[4:6]}-{night[6:8]}  {code}: {count} meteors"
             image = make_stack(archived_dir, code, config, tmp_dir,
                                int(min(per_shower, budget)),
                                ff_by_shower.get(code, []), tmp_dir, caption)
@@ -419,7 +416,7 @@ def publish_shower_stacks(archived_dir, config, no_upload=False):
     # ended the same way it decided it had started.
     grace = imnconfig.get("trackstack", "grace_nights")
     for key, entry in list(state.items()):
-        entry_station, entry_code, entry_year = key.split("/")
+        entry_station, entry_code, _entry_year = key.split("/")
         if entry_station != station or entry_code in seen:
             continue
         entry["misses"] = entry.get("misses", 0) + 1
@@ -448,7 +445,7 @@ def publish_shower_stacks(archived_dir, config, no_upload=False):
         images = stack_paths(station, code, year)
 
         out_path = os.path.join(tempfile.gettempdir(),
-                                "{}_{}_{}.mp4".format(station, code, year))
+                                f"{station}_{code}_{year}.mp4")
         if build_video(station, code, year, out_path) is None:
             continue
 
