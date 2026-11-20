@@ -12,7 +12,9 @@
 
     usage: python portrait_prototype.py <in.mp4> <out.mp4> <overlay.png>
 """
-import subprocess, sys
+import subprocess
+import sys
+
 from PIL import Image, ImageDraw, ImageFont
 
 src, out, png = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -80,13 +82,12 @@ img.save(png)
 frames = int(subprocess.check_output(
     ["ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0",
      "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", src]).strip())
-hold = max(1, int(round(EXTRA_HOLD * FPS)))
+hold = max(1, round(EXTRA_HOLD * FPS))
 
 # loop (not tpad) so this also runs on the stations' ffmpeg 4.1.4
-fc = ("[0:v]loop=loop={h}:size=1:start={s},setpts=N/{fps}/TB,"
-      "scale={W}:{VH},pad={W}:{H}:0:{VY}:black[v];"
-      "[v][1:v]overlay=0:0,format=yuv420p[o]").format(
-          h=hold, s=frames - 1, fps=FPS, W=W, H=H, VH=VH, VY=VY)
+fc = (f"[0:v]loop=loop={hold}:size=1:start={frames - 1},setpts=N/{FPS}/TB,"
+      f"scale={W}:{VH},pad={W}:{H}:0:{VY}:black[v];"
+      "[v][1:v]overlay=0:0,format=yuv420p[o]")
 subprocess.check_call(["ffmpeg", "-v", "error", "-y", "-i", src, "-i", png,
                        "-filter_complex", fc, "-map", "[o]", "-r", str(FPS),
                        "-c:v", "libx264", "-profile:v", "high", "-crf", "20",
